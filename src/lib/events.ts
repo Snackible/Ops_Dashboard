@@ -18,16 +18,24 @@ type EventName = keyof DomainEvents;
 type Handler<E extends EventName> = (payload: DomainEvents[E]) => void;
 
 class EventBus {
-  private handlers: { [K in EventName]?: Set<Handler<K>> } = {};
+  // Untyped internally (Set<Handler<any>>) — every external caller goes
+  // through the generic `on`/`emit` below, which is where the real type
+  // safety lives. TS can't verify a single map's value type varies per key
+  // the way DomainEvents does, so the internal storage stays loose on purpose.
+  private handlers = new Map<EventName, Set<Handler<any>>>();
 
   on<E extends EventName>(event: E, handler: Handler<E>): () => void {
-    const set = (this.handlers[event] ??= new Set()) as Set<Handler<E>>;
+    let set = this.handlers.get(event);
+    if (!set) {
+      set = new Set();
+      this.handlers.set(event, set);
+    }
     set.add(handler);
-    return () => set.delete(handler);
+    return () => set!.delete(handler);
   }
 
   emit<E extends EventName>(event: E, payload: DomainEvents[E]): void {
-    const set = this.handlers[event] as Set<Handler<E>> | undefined;
+    const set = this.handlers.get(event) as Set<Handler<E>> | undefined;
     if (!set) return;
     for (const handler of set) {
       try {

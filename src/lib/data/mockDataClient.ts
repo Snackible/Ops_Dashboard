@@ -1,9 +1,9 @@
 import catalogSeed from "../../data/catalog.json";
 import { eventBus } from "../events";
-import type { B2BAccount, InventoryItem, StockRequest } from "../types";
-import type { DataClient, LineItemDecision } from "./dataClient";
+import type { B2BAccount, InventoryItem, StockRequest, Tier } from "../types";
+import type { DataClient } from "./dataClient";
 
-const STORAGE_KEY = "snackible-ops-mock-db-v1";
+const STORAGE_KEY = "snackible-ops-mock-db-v2";
 
 interface DB {
   inventory: InventoryItem[];
@@ -33,12 +33,12 @@ const seedAccounts: B2BAccount[] = [
 function seedDB(): DB {
   const inventory: InventoryItem[] = (catalogSeed as Omit<
     InventoryItem,
-    "currentStock" | "reorderThreshold" | "active"
+    "currentStock" | "active" | "tier"
   >[]).map((item) => ({
     ...item,
     currentStock: 0,
-    reorderThreshold: null,
     active: true,
+    tier: "yellow" as Tier,
   }));
   return { inventory, accounts: seedAccounts, requests: [] };
 }
@@ -75,33 +75,36 @@ async function tick<T>(value: T): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), 120));
 }
 
+function findInventory(skuId: string): InventoryItem {
+  const item = db.inventory.find((i) => i.skuId === skuId);
+  if (!item) throw new Error(`Unknown SKU ${skuId}`);
+  return item;
+}
+
 export const mockDataClient: DataClient = {
   async getInventory() {
     return tick([...db.inventory]);
   },
 
   async updateStock(skuId, currentStock) {
-    const item = db.inventory.find((i) => i.skuId === skuId);
-    if (!item) throw new Error(`Unknown SKU ${skuId}`);
+    const item = findInventory(skuId);
     item.currentStock = currentStock;
     saveDB(db);
     eventBus.emit("InventoryUpdated", { item });
     return tick(item);
   },
 
-  async setReorderThreshold(skuId, threshold) {
-    const item = db.inventory.find((i) => i.skuId === skuId);
-    if (!item) throw new Error(`Unknown SKU ${skuId}`);
-    item.reorderThreshold = threshold;
+  async setActive(skuId, active) {
+    const item = findInventory(skuId);
+    item.active = active;
     saveDB(db);
     eventBus.emit("InventoryUpdated", { item });
     return tick(item);
   },
 
-  async setActive(skuId, active) {
-    const item = db.inventory.find((i) => i.skuId === skuId);
-    if (!item) throw new Error(`Unknown SKU ${skuId}`);
-    item.active = active;
+  async setTier(skuId, tier) {
+    const item = findInventory(skuId);
+    item.tier = tier;
     saveDB(db);
     eventBus.emit("InventoryUpdated", { item });
     return tick(item);
@@ -115,30 +118,68 @@ export const mockDataClient: DataClient = {
     return tick(db.accounts.find((a) => a.accountId === accountId));
   },
 
-  async submitRequest(accountId, lineItems) {
-    const request: StockRequest = {
-      requestId: id("req"),
-      accountId,
-      status: "pending",
-      submittedAt: new Date().toISOString(),
-      decidedAt: null,
-      decidedBy: null,
-      decisionNote: null,
-      lineItems: lineItems.map((li) => {
-        const catalogItem = db.inventory.find((i) => i.skuId === li.skuId);
-        return {
-          lineItemId: id("line"),
-          skuId: li.skuId,
-          qtyRequested: li.qtyRequested,
-          qtyFulfilled: null,
-          unitMrpSnapshot: catalogItem?.mrpInr ?? 0,
-        };
-      }),
-    };
-    db.requests.unshift(request);
+  async getDraftOrder(accountId) {
+    const draft = db.requests.find((r) => r.accountId === accountId && r.status === "draft");
+    return tick(draft ?? null);
+  },
+
+  async commitItem(accountId, skuId, qty) {
+    const clampedQty = Math.max(0, Math.floor(qty));
+    let draft = db.requests.find((r) => r.accountId === accountId && r.status === "draft");
+    if (!draft) {
+      draft = {
+        requestId: id("req"),
+        accountId,
+        status: "draft",
+        createdAt: new Date().toISOString(),
+        submittedAt: null,
+        decidedAt: null,
+        decidedBy: null,
+        decisionNote: null,
+        lineItems: [],
+      };
+      db.requests.unshift(draft);
+    }
+
+    const item = findInventory(skuId);
+    const existing = draft.lineItems.find((li) => li.skuId === skuId);
+    const previousQty = existing?.qty ?? 0;
+    const delta = clampedQty - previousQty;
+
+    if (delta > 0 && delta > item.currentStock) {
+      throw new Error(`Only ${item.currentStock} available for ${item.productName}`);
+    }
+
+    item.currentStock -= delta;
+
+    if (clampedQty === 0) {
+      draft.lineItems = draft.lineItems.filter((li) => li.skuId !== skuId);
+    } else if (existing) {
+      existing.qty = clampedQty;
+    } else {
+      draft.lineItems.push({
+        lineItemId: id("line"),
+        skuId,
+        qty: clampedQty,
+        unitMrpSnapshot: item.mrpInr,
+      });
+    }
+
     saveDB(db);
-    eventBus.emit("RequestSubmitted", { request });
-    return tick(request);
+    eventBus.emit("InventoryUpdated", { item });
+    return tick(draft);
+  },
+
+  async pushOrder(accountId) {
+    const draft = db.requests.find((r) => r.accountId === accountId && r.status === "draft");
+    if (!draft) throw new Error("No draft order to push");
+    if (draft.lineItems.length === 0) throw new Error("Add at least one item before pushing");
+
+    draft.status = "pending";
+    draft.submittedAt = new Date().toISOString();
+    saveDB(db);
+    eventBus.emit("RequestSubmitted", { request: draft });
+    return tick(draft);
   },
 
   async getRequests() {
@@ -149,35 +190,28 @@ export const mockDataClient: DataClient = {
     return tick(db.requests.filter((r) => r.accountId === accountId));
   },
 
-  async decideRequest(requestId, decidedBy, lineItemDecisions, decisionNote) {
+  async decideRequest(requestId, decidedBy, approve, decisionNote) {
     const request = db.requests.find((r) => r.requestId === requestId);
     if (!request) throw new Error(`Unknown request ${requestId}`);
 
-    const byLineItem = new Map(
-      lineItemDecisions.map((d) => [d.lineItemId, d.qtyFulfilled])
-    );
-    request.lineItems = request.lineItems.map((li) => ({
-      ...li,
-      qtyFulfilled: byLineItem.get(li.lineItemId) ?? 0,
-    }));
+    if (!approve) {
+      for (const li of request.lineItems) {
+        const item = db.inventory.find((i) => i.skuId === li.skuId);
+        if (item) {
+          item.currentStock += li.qty;
+          eventBus.emit("InventoryUpdated", { item });
+        }
+      }
+    }
 
-    const allFull = request.lineItems.every(
-      (li) => li.qtyFulfilled === li.qtyRequested
-    );
-    const allZero = request.lineItems.every((li) => li.qtyFulfilled === 0);
-
-    request.status = allZero ? "declined" : allFull ? "approved_full" : "approved_partial";
+    request.status = approve ? "approved" : "declined";
     request.decidedAt = new Date().toISOString();
     request.decidedBy = decidedBy;
     request.decisionNote = decisionNote;
 
     saveDB(db);
 
-    if (request.status === "declined") {
-      eventBus.emit("RequestDeclined", { request });
-    } else {
-      eventBus.emit("RequestApproved", { request });
-    }
+    eventBus.emit(approve ? "RequestApproved" : "RequestDeclined", { request });
 
     return tick(request);
   },

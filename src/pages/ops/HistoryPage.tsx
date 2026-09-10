@@ -18,7 +18,7 @@ export function HistoryPage() {
   useEffect(() => {
     Promise.all([dataClient.getRequests(), dataClient.getAccounts(), dataClient.getInventory()]).then(
       ([reqs, accts, inv]) => {
-        setRequests(reqs.filter((r) => r.status !== "pending"));
+        setRequests(reqs.filter((r) => r.status === "approved" || r.status === "declined"));
         setAccounts(accts);
         setInventory(inv);
         setLoading(false);
@@ -89,7 +89,7 @@ export function HistoryPage() {
               <ul className="mt-2 space-y-1 text-[13px] text-ink-soft">
                 {req.lineItems.map((li) => (
                   <li key={li.lineItemId} className="font-mono tabular-nums">
-                    {inventoryBySku.get(li.skuId)?.productName ?? li.skuId}: {li.qtyRequested} → {li.qtyFulfilled}
+                    {inventoryBySku.get(li.skuId)?.productName ?? li.skuId} × {li.qty}
                   </li>
                 ))}
               </ul>
@@ -107,8 +107,7 @@ export function HistoryPage() {
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Company</th>
                 <th className="px-3 py-2">Product</th>
-                <th className="px-3 py-2">Req</th>
-                <th className="px-3 py-2">Fulfilled</th>
+                <th className="px-3 py-2">Qty</th>
                 <th className="px-3 py-2">Line total</th>
                 <th className="px-3 py-2">By</th>
               </tr>
@@ -119,8 +118,7 @@ export function HistoryPage() {
                   <td className="px-3 py-2 font-mono text-[11.5px]">{new Date(row.dateFulfilled).toLocaleDateString()}</td>
                   <td className="px-3 py-2">{row.companyName}</td>
                   <td className="px-3 py-2">{row.productName}</td>
-                  <td className="px-3 py-2 font-mono tabular-nums">{row.qtyRequested}</td>
-                  <td className="px-3 py-2 font-mono tabular-nums">{row.qtyFulfilled}</td>
+                  <td className="px-3 py-2 font-mono tabular-nums">{row.qty}</td>
                   <td className="px-3 py-2 font-mono tabular-nums">₹{row.lineTotal}</td>
                   <td className="px-3 py-2">{row.approvedBy}</td>
                 </tr>

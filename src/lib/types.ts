@@ -1,5 +1,7 @@
 export type Role = "b2b" | "ops";
 
+export type Tier = "green" | "yellow" | "orange" | "red";
+
 export interface InventoryItem {
   skuId: string;
   category: string;
@@ -8,8 +10,13 @@ export interface InventoryItem {
   mrpInr: number;
   shelfLifeDays: number;
   currentStock: number;
-  reorderThreshold: number | null;
   active: boolean;
+  /**
+   * Ops-assigned, not computed. Green = high inventory / high production
+   * priority, descending to red. Ops rearranges these by hand whenever
+   * they want — no formula drives it.
+   */
+  tier: Tier;
   metadata?: Record<string, unknown>;
 }
 
@@ -22,17 +29,19 @@ export interface B2BAccount {
   pricingTierId: string | null;
 }
 
-export type RequestStatus =
-  | "pending"
-  | "approved_full"
-  | "approved_partial"
-  | "declined";
+/**
+ * draft      — B2B is building it; each line item's qty is already reserved
+ *              (subtracted) from InventoryItem.currentStock.
+ * pending    — pushed to Ops; still reserved, now awaiting a decision.
+ * approved   — Ops confirmed it. Stock stays deducted (it shipped/will ship).
+ * declined   — Ops rejected it. Reserved qty is released back to stock.
+ */
+export type RequestStatus = "draft" | "pending" | "approved" | "declined";
 
 export interface RequestLineItem {
   lineItemId: string;
   skuId: string;
-  qtyRequested: number;
-  qtyFulfilled: number | null;
+  qty: number;
   unitMrpSnapshot: number;
 }
 
@@ -40,7 +49,8 @@ export interface StockRequest {
   requestId: string;
   accountId: string;
   status: RequestStatus;
-  submittedAt: string;
+  createdAt: string;
+  submittedAt: string | null;
   decidedAt: string | null;
   decidedBy: string | null;
   decisionNote: string | null;
@@ -55,8 +65,7 @@ export interface FulfillmentLogRow {
   contactPhone: string;
   category: string;
   productName: string;
-  qtyRequested: number;
-  qtyFulfilled: number;
+  qty: number;
   unitMrp: number;
   lineTotal: number;
   approvedBy: string;

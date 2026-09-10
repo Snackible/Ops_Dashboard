@@ -20,6 +20,8 @@ export default {
         "warning-soft": "var(--warning-soft)",
         danger: "var(--danger)",
         "danger-soft": "var(--danger-soft)",
+        "tier-orange": "var(--tier-orange)",
+        "tier-orange-soft": "var(--tier-orange-soft)",
       },
       fontFamily: {
         display: ["Fraunces", "Georgia", "serif"],

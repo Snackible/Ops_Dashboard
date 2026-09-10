@@ -2,7 +2,7 @@ import { eventBus } from "../events";
 import { dataClient } from "../data";
 import type { FulfillmentLogRow, StockRequest } from "../types";
 
-const SHEET_STORAGE_KEY = "snackible-ops-fulfillment-sheet-mock";
+const SHEET_STORAGE_KEY = "snackible-ops-fulfillment-sheet-mock-v2";
 
 function readMockSheet(): FulfillmentLogRow[] {
   try {
@@ -37,27 +37,23 @@ async function buildRows(request: StockRequest): Promise<FulfillmentLogRow[]> {
   const inventory = await dataClient.getInventory();
   const bySku = new Map(inventory.map((i) => [i.skuId, i]));
 
-  return request.lineItems
-    .filter((li) => (li.qtyFulfilled ?? 0) > 0)
-    .map((li) => {
-      const catalogItem = bySku.get(li.skuId);
-      const qtyFulfilled = li.qtyFulfilled ?? 0;
-      return {
-        dateFulfilled: request.decidedAt ?? new Date().toISOString(),
-        requestId: request.requestId,
-        companyName: account?.companyName ?? "Unknown account",
-        contactName: account?.contactName ?? "",
-        contactPhone: account?.contactPhone ?? "",
-        category: catalogItem?.category ?? "",
-        productName: catalogItem?.productName ?? li.skuId,
-        qtyRequested: li.qtyRequested,
-        qtyFulfilled,
-        unitMrp: li.unitMrpSnapshot,
-        lineTotal: qtyFulfilled * li.unitMrpSnapshot,
-        approvedBy: request.decidedBy ?? "",
-        notes: request.decisionNote ?? "",
-      } satisfies FulfillmentLogRow;
-    });
+  return request.lineItems.map((li) => {
+    const catalogItem = bySku.get(li.skuId);
+    return {
+      dateFulfilled: request.decidedAt ?? new Date().toISOString(),
+      requestId: request.requestId,
+      companyName: account?.companyName ?? "Unknown account",
+      contactName: account?.contactName ?? "",
+      contactPhone: account?.contactPhone ?? "",
+      category: catalogItem?.category ?? "",
+      productName: catalogItem?.productName ?? li.skuId,
+      qty: li.qty,
+      unitMrp: li.unitMrpSnapshot,
+      lineTotal: li.qty * li.unitMrpSnapshot,
+      approvedBy: request.decidedBy ?? "",
+      notes: request.decisionNote ?? "",
+    } satisfies FulfillmentLogRow;
+  });
 }
 
 /** Subscriber #3 on the event bus: the only one that writes to the fulfillment sheet, and only on approval. */

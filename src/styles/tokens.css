@@ -3,59 +3,63 @@
 @tailwind utilities;
 
 :root {
-  --paper: #efece2;
-  --paper-raised: #f8f6ee;
-  --ink: #23241d;
-  --ink-soft: #5c5d4e;
-  --ink-faint: #8b8c78;
-  --line: #d9d4c2;
-  --accent: #b6552a;
-  --accent-ink: #8a3f1d;
-  --accent-soft: #e7d6c3;
-  --success: #4c7355;
-  --success-soft: #dbe4d5;
-  --warning: #a8802f;
-  --warning-soft: #ecdfba;
-  --danger: #8c3a35;
-  --danger-soft: #e9d5cf;
+  --paper: #eef1f4;
+  --paper-raised: #ffffff;
+  --ink: #1a212b;
+  --ink-soft: #5a6674;
+  --ink-faint: #8993a1;
+  --line: #d7dee5;
+  --accent: #1f7a8c;
+  --accent-ink: #145c6b;
+  --accent-soft: #dbedf0;
+  --success: #2f8f5b;
+  --success-soft: #dcefe2;
+  --warning: #b3811f;
+  --warning-soft: #f3e6c8;
+  --danger: #c1443b;
+  --danger-soft: #f5dad6;
+  --tier-orange: #c9631f;
+  --tier-orange-soft: #f4e0cc;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --paper: #1b1c17;
-    --paper-raised: #232419;
-    --ink: #eae6d8;
-    --ink-soft: #a9a68f;
-    --ink-faint: #78765f;
-    --line: #3a3a2c;
-    --accent: #e08a56;
-    --accent-ink: #f0a878;
-    --accent-soft: #3c2c1c;
-    --success: #7fac89;
-    --success-soft: #25321f;
-    --warning: #d8b46b;
-    --warning-soft: #372c17;
-    --danger: #cd7a72;
-    --danger-soft: #382420;
+    --paper: #11161c;
+    --paper-raised: #1a212a;
+    --ink: #e6eaef;
+    --ink-soft: #9aa6b4;
+    --ink-faint: #67717e;
+    --line: #2b333d;
+    --accent: #4fb6c8;
+    --accent-ink: #7ed1e0;
+    --accent-soft: #1a323a;
+    --success: #5bc088;
+    --success-soft: #1c3327;
+    --warning: #dcae5c;
+    --warning-soft: #382c17;
+    --danger: #e08079;
+    --danger-soft: #3a2422;
+    --tier-orange: #e0925a;
+    --tier-orange-soft: #3a2c1c;
   }
 }
 
 :root[data-theme="dark"] {
-  --paper: #1b1c17;
-  --paper-raised: #232419;
-  --ink: #eae6d8;
-  --ink-soft: #a9a68f;
-  --ink-faint: #78765f;
-  --line: #3a3a2c;
-  --accent: #e08a56;
-  --accent-ink: #f0a878;
-  --accent-soft: #3c2c1c;
-  --success: #7fac89;
-  --success-soft: #25321f;
-  --warning: #d8b46b;
-  --warning-soft: #372c17;
-  --danger: #cd7a72;
-  --danger-soft: #382420;
+  --paper: #11161c;
+  --paper-raised: #1a212a;
+  --ink: #e6eaef;
+  --ink-soft: #9aa6b4;
+  --ink-faint: #67717e;
+  --line: #2b333d;
+  --accent: #4fb6c8;
+  --accent-ink: #7ed1e0;
+  --accent-soft: #1a323a;
+  --success: #5bc088;
+  --success-soft: #1c3327;
+  --warning: #dcae5c;
+  --warning-soft: #382c17;
+  --danger: #e08079;
+  --danger-soft: #3a2422;
 }
 
 html {
