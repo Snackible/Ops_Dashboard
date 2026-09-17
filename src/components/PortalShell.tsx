@@ -29,6 +29,7 @@ export function PortalShell({ brandLabel, navItems, children }: PortalShellProps
                 <NavLink
                   key={item.to}
                   to={item.to}
+                  end
                   className={({ isActive }) =>
                     `rounded-md px-3 py-1.5 text-sm transition-colors ${
                       isActive ? "bg-accent-soft text-accent-ink font-medium" : "text-ink-soft hover:text-ink hover:bg-paper-raised"

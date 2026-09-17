@@ -3,7 +3,7 @@ import { eventBus } from "../events";
 import type { B2BAccount, InventoryItem, StockRequest, Tier } from "../types";
 import type { DataClient } from "./dataClient";
 
-const STORAGE_KEY = "snackible-ops-mock-db-v2";
+const STORAGE_KEY = "snackible-ops-mock-db-v3";
 
 interface DB {
   inventory: InventoryItem[];
@@ -118,68 +118,53 @@ export const mockDataClient: DataClient = {
     return tick(db.accounts.find((a) => a.accountId === accountId));
   },
 
-  async getDraftOrder(accountId) {
-    const draft = db.requests.find((r) => r.accountId === accountId && r.status === "draft");
-    return tick(draft ?? null);
+  async commitOrder(accountId, lineItems) {
+    const wanted = lineItems.filter((li) => li.qty > 0);
+    if (wanted.length === 0) throw new Error("Add at least one item before committing");
+
+    // Validate every line first — an order either commits whole or not at all.
+    for (const li of wanted) {
+      const item = findInventory(li.skuId);
+      if (li.qty > item.currentStock) {
+        throw new Error(`Only ${item.currentStock} available for ${item.productName}`);
+      }
+    }
+
+    const request: StockRequest = {
+      requestId: id("req"),
+      accountId,
+      status: "committed",
+      createdAt: new Date().toISOString(),
+      submittedAt: null,
+      decidedAt: null,
+      decidedBy: null,
+      decisionNote: null,
+      lineItems: wanted.map((li) => {
+        const item = findInventory(li.skuId);
+        item.currentStock -= li.qty;
+        eventBus.emit("InventoryUpdated", { item });
+        return { lineItemId: id("line"), skuId: li.skuId, qty: li.qty, unitMrpSnapshot: item.mrpInr };
+      }),
+    };
+    db.requests.unshift(request);
+    saveDB(db);
+    return tick(request);
   },
 
-  async commitItem(accountId, skuId, qty) {
-    const clampedQty = Math.max(0, Math.floor(qty));
-    let draft = db.requests.find((r) => r.accountId === accountId && r.status === "draft");
-    if (!draft) {
-      draft = {
-        requestId: id("req"),
-        accountId,
-        status: "draft",
-        createdAt: new Date().toISOString(),
-        submittedAt: null,
-        decidedAt: null,
-        decidedBy: null,
-        decisionNote: null,
-        lineItems: [],
-      };
-      db.requests.unshift(draft);
-    }
-
-    const item = findInventory(skuId);
-    const existing = draft.lineItems.find((li) => li.skuId === skuId);
-    const previousQty = existing?.qty ?? 0;
-    const delta = clampedQty - previousQty;
-
-    if (delta > 0 && delta > item.currentStock) {
-      throw new Error(`Only ${item.currentStock} available for ${item.productName}`);
-    }
-
-    item.currentStock -= delta;
-
-    if (clampedQty === 0) {
-      draft.lineItems = draft.lineItems.filter((li) => li.skuId !== skuId);
-    } else if (existing) {
-      existing.qty = clampedQty;
-    } else {
-      draft.lineItems.push({
-        lineItemId: id("line"),
-        skuId,
-        qty: clampedQty,
-        unitMrpSnapshot: item.mrpInr,
-      });
-    }
-
-    saveDB(db);
-    eventBus.emit("InventoryUpdated", { item });
-    return tick(draft);
+  async getCommittedOrders(accountId) {
+    return tick(db.requests.filter((r) => r.accountId === accountId && r.status === "committed"));
   },
 
-  async pushOrder(accountId) {
-    const draft = db.requests.find((r) => r.accountId === accountId && r.status === "draft");
-    if (!draft) throw new Error("No draft order to push");
-    if (draft.lineItems.length === 0) throw new Error("Add at least one item before pushing");
+  async pushOrder(requestId) {
+    const request = db.requests.find((r) => r.requestId === requestId);
+    if (!request) throw new Error(`Unknown request ${requestId}`);
+    if (request.status !== "committed") throw new Error("Only a committed order can be pushed");
 
-    draft.status = "pending";
-    draft.submittedAt = new Date().toISOString();
+    request.status = "pending";
+    request.submittedAt = new Date().toISOString();
     saveDB(db);
-    eventBus.emit("RequestSubmitted", { request: draft });
-    return tick(draft);
+    eventBus.emit("RequestSubmitted", { request });
+    return tick(request);
   },
 
   async getRequests() {

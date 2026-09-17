@@ -1,7 +1,7 @@
 import type { RequestStatus } from "../lib/types";
 
 const CONFIG: Record<RequestStatus, { label: string; classes: string }> = {
-  draft: { label: "Draft", classes: "bg-paper text-ink-soft" },
+  committed: { label: "Committed", classes: "bg-accent-soft text-accent-ink" },
   pending: { label: "Pending", classes: "bg-warning-soft text-warning" },
   approved: { label: "Approved", classes: "bg-success-soft text-success" },
   declined: { label: "Declined", classes: "bg-danger-soft text-danger" },

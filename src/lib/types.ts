@@ -30,13 +30,15 @@ export interface B2BAccount {
 }
 
 /**
- * draft      — B2B is building it; each line item's qty is already reserved
- *              (subtracted) from InventoryItem.currentStock.
+ * committed  — B2B committed it: every line item's qty is reserved
+ *              (subtracted) from InventoryItem.currentStock, but it has not
+ *              been sent to Ops yet. A B2B account can hold several of
+ *              these at once and push each whenever it's ready.
  * pending    — pushed to Ops; still reserved, now awaiting a decision.
  * approved   — Ops confirmed it. Stock stays deducted (it shipped/will ship).
  * declined   — Ops rejected it. Reserved qty is released back to stock.
  */
-export type RequestStatus = "draft" | "pending" | "approved" | "declined";
+export type RequestStatus = "committed" | "pending" | "approved" | "declined";
 
 export interface RequestLineItem {
   lineItemId: string;

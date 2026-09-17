@@ -2,11 +2,11 @@ import type { B2BAccount, InventoryItem, StockRequest, Tier } from "../types";
 
 /**
  * Everything the UI needs from a backend, named after what the app does
- * (commit an item, push an order, decide a request) rather than how any one
- * backend stores it. `mockDataClient` implements this against localStorage
- * so the whole app runs with no server; a `supabaseDataClient` implementing
- * the same interface is the intended swap-in later — nothing outside this
- * file needs to change when that happens.
+ * (commit an order, push an order, decide a request) rather than how any
+ * one backend stores it. `mockDataClient` implements this against
+ * localStorage so the whole app runs with no server; `supabaseDataClient`
+ * implementing the same interface is the real-backend swap-in — nothing
+ * outside this file needs to change either way.
  */
 export interface DataClient {
   getInventory(): Promise<InventoryItem[]>;
@@ -18,19 +18,22 @@ export interface DataClient {
   getAccounts(): Promise<B2BAccount[]>;
   getAccount(accountId: string): Promise<B2BAccount | undefined>;
 
-  /** The account's in-progress order, if any (status "draft"). */
-  getDraftOrder(accountId: string): Promise<StockRequest | null>;
-
   /**
-   * Sets a line item's committed quantity on the account's draft order
-   * (creating the draft if needed), immediately reserving the delta from
-   * `InventoryItem.currentStock`. qty 0 removes the line item and releases
-   * its reservation. Throws if qty exceeds what's currently available.
+   * Creates a new order in one shot from a locally-built cart, reserving
+   * every line item's qty from `InventoryItem.currentStock` atomically —
+   * either the whole order commits or none of it does. An account can hold
+   * several committed orders at once; this always creates a new one.
    */
-  commitItem(accountId: string, skuId: string, qty: number): Promise<StockRequest>;
+  commitOrder(
+    accountId: string,
+    lineItems: { skuId: string; qty: number }[]
+  ): Promise<StockRequest>;
 
-  /** Sends the draft to Ops: status draft -> pending. Requires at least one line item. */
-  pushOrder(accountId: string): Promise<StockRequest>;
+  /** Committed-but-not-yet-pushed orders for an account — the "Committed" tab. */
+  getCommittedOrders(accountId: string): Promise<StockRequest[]>;
+
+  /** Sends one committed order to Ops: status committed -> pending. */
+  pushOrder(requestId: string): Promise<StockRequest>;
 
   getRequests(): Promise<StockRequest[]>;
   getRequestsForAccount(accountId: string): Promise<StockRequest[]>;

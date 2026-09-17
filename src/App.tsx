@@ -5,6 +5,7 @@ import { PortalShell } from "./components/PortalShell";
 import { ToastHost } from "./components/ToastHost";
 import { LoginPage } from "./pages/LoginPage";
 import { CatalogPage } from "./pages/b2b/CatalogPage";
+import { CommittedOrdersPage } from "./pages/b2b/CommittedOrdersPage";
 import { MyRequestsPage } from "./pages/b2b/MyRequestsPage";
 import { QueuePage } from "./pages/ops/QueuePage";
 import { InventoryPage } from "./pages/ops/InventoryPage";
@@ -12,7 +13,8 @@ import { TierBoardPage } from "./pages/ops/TierBoardPage";
 import { HistoryPage } from "./pages/ops/HistoryPage";
 
 const B2B_NAV = [
-  { to: "/b2b", label: "Catalog" },
+  { to: "/b2b", label: "New Order" },
+  { to: "/b2b/committed", label: "Committed" },
   { to: "/b2b/requests", label: "My Requests" },
 ];
 
@@ -42,6 +44,16 @@ export function App() {
             <RequireRole role="b2b">
               <PortalShell brandLabel="B2B" navItems={B2B_NAV}>
                 <CatalogPage />
+              </PortalShell>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/b2b/committed"
+          element={
+            <RequireRole role="b2b">
+              <PortalShell brandLabel="B2B" navItems={B2B_NAV}>
+                <CommittedOrdersPage />
               </PortalShell>
             </RequireRole>
           }

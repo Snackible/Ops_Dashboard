@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { dataClient } from "../../lib/data";
 import { useAuth } from "../../lib/auth/AuthContext";
 import { notificationStore } from "../../lib/integrations/notificationStore";
 import { SkeletonRow } from "../../components/Skeleton";
 import { EmptyState } from "../../components/EmptyState";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
-import type { InventoryItem, StockRequest, Tier } from "../../lib/types";
+import type { InventoryItem, Tier } from "../../lib/types";
 
-type Stage = "browsing" | "preview" | "committed";
+type Stage = "browsing" | "preview";
 type TierFilter = "all" | Tier;
 
 function CatalogRow({
@@ -66,9 +67,9 @@ export function CatalogPage() {
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [stage, setStage] = useState<Stage>("browsing");
-  const [committedDraft, setCommittedDraft] = useState<StockRequest | null>(null);
   const [busy, setBusy] = useState(false);
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   async function loadInventory() {
     const inv = await dataClient.getInventory();
@@ -77,16 +78,8 @@ export function CatalogPage() {
   }
 
   useEffect(() => {
-    if (!user?.accountId) return;
     loadInventory();
-    dataClient.getDraftOrder(user.accountId).then((draft) => {
-      if (draft && draft.lineItems.length > 0) {
-        setCommittedDraft(draft);
-        setStage("committed");
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.accountId]);
+  }, []);
 
   const categories = useMemo(() => ["All", ...Array.from(new Set(items.map((i) => i.category)))], [items]);
 
@@ -119,33 +112,24 @@ export function CatalogPage() {
     if (!user?.accountId) return;
     setBusy(true);
     try {
-      let draft: StockRequest | null = null;
-      for (const [skuId, qty] of cartLines) {
-        draft = await dataClient.commitItem(user.accountId, skuId, qty);
-      }
-      setCommittedDraft(draft);
-      setStage("committed");
+      await dataClient.commitOrder(
+        user.accountId,
+        cartLines.map(([skuId, qty]) => ({ skuId, qty }))
+      );
+      notificationStore.push({
+        kind: "success",
+        title: "Order committed",
+        body: "Reserved from stock — push it anytime from the Committed tab.",
+      });
       setCart({});
-      await loadInventory();
+      setStage("browsing");
+      navigate("/b2b/committed");
     } catch (err) {
       notificationStore.push({
         kind: "danger",
         title: "Couldn't commit order",
         body: err instanceof Error ? err.message : "Not enough stock available for one of the items.",
       });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function pushOrder() {
-    if (!user?.accountId) return;
-    setBusy(true);
-    try {
-      await dataClient.pushOrder(user.accountId);
-      notificationStore.push({ kind: "success", title: "Order pushed", body: "Sent to Ops for review." });
-      setCommittedDraft(null);
-      setStage("browsing");
     } finally {
       setBusy(false);
     }
@@ -198,55 +182,12 @@ export function CatalogPage() {
     );
   }
 
-  if (stage === "committed" && committedDraft) {
-    const total = committedDraft.lineItems.reduce((sum, li) => sum + li.qty * li.unitMrpSnapshot, 0);
-    return (
-      <div className="mx-auto max-w-xl">
-        <h1 className="font-display text-2xl font-semibold">Order committed</h1>
-        <p className="mb-6 text-sm text-ink-soft">
-          These quantities are reserved from stock. Push when you're ready to send it to Ops.
-        </p>
-
-        <div className="divide-y divide-line rounded-xl border border-line bg-paper-raised">
-          {committedDraft.lineItems.map((li) => {
-            const item = items.find((i) => i.skuId === li.skuId);
-            return (
-              <div key={li.lineItemId} className="flex items-center justify-between px-4 py-3 text-sm">
-                <div>
-                  <p className="font-medium">{item?.productName ?? li.skuId}</p>
-                  <p className="font-mono text-[11.5px] tabular-nums text-ink-faint">
-                    {li.qty} × ₹{li.unitMrpSnapshot}
-                  </p>
-                </div>
-                <p className="font-mono tabular-nums">₹{li.qty * li.unitMrpSnapshot}</p>
-              </div>
-            );
-          })}
-          <div className="flex items-center justify-between px-4 py-3">
-            <p className="font-semibold">Total</p>
-            <p className="font-mono text-base font-semibold tabular-nums">₹{total}</p>
-          </div>
-        </div>
-
-        <div className="mt-5 flex items-center justify-end">
-          <button
-            onClick={pushOrder}
-            disabled={busy}
-            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-60"
-          >
-            {busy ? "Pushing…" : "Push order to Ops"}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-semibold">Catalog</h1>
-          <p className="text-sm text-ink-soft">Add items, then review and commit before pushing to Ops.</p>
+          <h1 className="font-display text-2xl font-semibold">New Order</h1>
+          <p className="text-sm text-ink-soft">Add items, then review and commit. Push from the Committed tab when ready.</p>
         </div>
         <input
           value={search}
@@ -303,7 +244,7 @@ export function CatalogPage() {
       ) : (
         <div className="space-y-4 pb-20">
           {(tierFilter === "all" ? TIER_ORDER : [tierFilter]).map((tier) => {
-            const tierItems = filtered.filter((i) => i.tier === tier);
+            const tierItems = filtered.filter((i) => i.tier === tier).sort((a, b) => b.currentStock - a.currentStock);
             if (tierItems.length === 0) return null;
             const c = TIER_CONFIG[tier];
             return (

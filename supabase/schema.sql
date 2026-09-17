@@ -31,7 +31,7 @@ create table if not exists b2b_accounts (
 create table if not exists requests (
   request_id        text primary key default ('req-' || replace(gen_random_uuid()::text, '-', '')),
   account_id        text not null references b2b_accounts(account_id),
-  status            text not null default 'draft' check (status in ('draft', 'pending', 'approved', 'declined')),
+  status            text not null default 'committed' check (status in ('committed', 'pending', 'approved', 'declined')),
   created_at        timestamptz not null default now(),
   submitted_at      timestamptz,
   decided_at        timestamptz,
@@ -52,84 +52,75 @@ create index if not exists idx_requests_account_status on requests(account_id, s
 create index if not exists idx_requests_status on requests(status);
 create index if not exists idx_line_items_request on request_line_items(request_id);
 
--- One draft per account, enforced so commitItem always knows which row to update.
-create unique index if not exists uniq_one_draft_per_account
-  on requests(account_id) where (status = 'draft');
-
 -- ── RPCs: the atomic operations ─────────────────────────────────────────
 
--- Sets a line item's committed qty on the caller's draft order (creating the
--- draft if needed), adjusting inventory.current_stock by the delta in the
--- same transaction. Raises if the delta exceeds what's currently available.
-create or replace function commit_item(p_account_id text, p_sku_id text, p_qty integer)
+-- Creates one new order from a full cart in a single transaction: every
+-- line item's qty is reserved from inventory.current_stock, or none of them
+-- are — an insufficient-stock line raises and rolls the whole call back.
+-- An account can hold several committed orders at once; this always
+-- inserts a new request rather than reusing one.
+--
+-- p_line_items is a jsonb array like [{"sku_id": "...", "qty": 3}, ...].
+create or replace function commit_order(p_account_id text, p_line_items jsonb)
 returns requests
 language plpgsql
 as $$
 declare
   v_request requests;
-  v_previous_qty integer := 0;
-  v_delta integer;
+  v_line jsonb;
+  v_sku_id text;
+  v_qty integer;
   v_available integer;
   v_mrp numeric(10,2);
 begin
-  select current_stock, mrp_inr into v_available, v_mrp
-    from inventory_items where sku_id = p_sku_id for update;
-  if not found then
-    raise exception 'Unknown SKU %', p_sku_id;
+  if jsonb_array_length(p_line_items) = 0 then
+    raise exception 'Add at least one item before committing';
   end if;
 
-  select * into v_request from requests
-    where account_id = p_account_id and status = 'draft' for update;
-  if not found then
-    insert into requests (account_id, status) values (p_account_id, 'draft')
-      returning * into v_request;
-  end if;
+  insert into requests (account_id, status) values (p_account_id, 'committed')
+    returning * into v_request;
 
-  select qty into v_previous_qty from request_line_items
-    where request_id = v_request.request_id and sku_id = p_sku_id;
-  v_previous_qty := coalesce(v_previous_qty, 0);
-  v_delta := p_qty - v_previous_qty;
+  for v_line in select * from jsonb_array_elements(p_line_items) loop
+    v_sku_id := v_line ->> 'sku_id';
+    v_qty := (v_line ->> 'qty')::integer;
 
-  if v_delta > v_available then
-    raise exception 'Only % available', v_available;
-  end if;
+    select current_stock, mrp_inr into v_available, v_mrp
+      from inventory_items where sku_id = v_sku_id for update;
+    if not found then
+      raise exception 'Unknown SKU %', v_sku_id;
+    end if;
+    if v_qty > v_available then
+      raise exception 'Only % available', v_available;
+    end if;
 
-  update inventory_items set current_stock = current_stock - v_delta where sku_id = p_sku_id;
-
-  if p_qty = 0 then
-    delete from request_line_items where request_id = v_request.request_id and sku_id = p_sku_id;
-  else
+    update inventory_items set current_stock = current_stock - v_qty where sku_id = v_sku_id;
     insert into request_line_items (request_id, sku_id, qty, unit_mrp_snapshot)
-      values (v_request.request_id, p_sku_id, p_qty, v_mrp)
-      on conflict (request_id, sku_id) do update set qty = excluded.qty;
-  end if;
+      values (v_request.request_id, v_sku_id, v_qty, v_mrp);
+  end loop;
 
   return v_request;
 end;
 $$;
 
--- draft -> pending. Requires at least one line item.
-create or replace function push_order(p_account_id text)
+-- committed -> pending, for one specific order (an account can have several
+-- committed orders sitting in its "Committed" tab at once).
+create or replace function push_order(p_request_id text)
 returns requests
 language plpgsql
 as $$
 declare
   v_request requests;
-  v_line_count integer;
 begin
-  select * into v_request from requests
-    where account_id = p_account_id and status = 'draft' for update;
+  select * into v_request from requests where request_id = p_request_id for update;
   if not found then
-    raise exception 'No draft order to push';
+    raise exception 'Unknown request %', p_request_id;
   end if;
-
-  select count(*) into v_line_count from request_line_items where request_id = v_request.request_id;
-  if v_line_count = 0 then
-    raise exception 'Add at least one item before pushing';
+  if v_request.status <> 'committed' then
+    raise exception 'Only a committed order can be pushed';
   end if;
 
   update requests set status = 'pending', submitted_at = now()
-    where request_id = v_request.request_id
+    where request_id = p_request_id
     returning * into v_request;
   return v_request;
 end;

@@ -20,7 +20,7 @@ export function MyRequestsPage() {
     ]);
     setRequests(
       reqs
-        .filter((r) => r.status !== "draft")
+        .filter((r) => r.status !== "committed")
         .sort((a, b) => (b.submittedAt ?? "").localeCompare(a.submittedAt ?? ""))
     );
     setInventory(inv);
@@ -39,7 +39,7 @@ export function MyRequestsPage() {
   return (
     <div>
       <h1 className="font-display text-2xl font-semibold">My Requests</h1>
-      <p className="mb-6 text-sm text-ink-soft">Orders you've pushed to Ops. Build or edit a draft from the Catalog.</p>
+      <p className="mb-6 text-sm text-ink-soft">Orders you've pushed to Ops. Build one from New Order, push from Committed.</p>
 
       {loading && (
         <div className="space-y-4">

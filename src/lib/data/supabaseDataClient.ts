@@ -179,20 +179,24 @@ export const supabaseDataClient: DataClient = {
     return data ? toAccount(data as AccountRow) : undefined;
   },
 
-  async getDraftOrder(accountId) {
-    const [draft] = await fetchRequestsWithLineItems({ accountId, status: "draft" });
-    return draft ?? null;
+  async getCommittedOrders(accountId) {
+    return fetchRequestsWithLineItems({ accountId, status: "committed" });
   },
 
-  async commitItem(accountId, skuId, qty) {
-    const { data, error } = await db().rpc("commit_item", { p_account_id: accountId, p_sku_id: skuId, p_qty: qty });
+  async commitOrder(accountId, lineItems) {
+    const wanted = lineItems.filter((li) => li.qty > 0);
+    if (wanted.length === 0) throw new Error("Add at least one item before committing");
+    const { data, error } = await db().rpc("commit_order", {
+      p_account_id: accountId,
+      p_line_items: wanted.map((li) => ({ sku_id: li.skuId, qty: li.qty })),
+    });
     if (error) throw new Error(error.message);
     const row = (Array.isArray(data) ? data[0] : data) as RequestRow;
     return fetchRequestWithLineItems(row.request_id);
   },
 
-  async pushOrder(accountId) {
-    const { data, error } = await db().rpc("push_order", { p_account_id: accountId });
+  async pushOrder(requestId) {
+    const { data, error } = await db().rpc("push_order", { p_request_id: requestId });
     if (error) throw new Error(error.message);
     const row = (Array.isArray(data) ? data[0] : data) as RequestRow;
     return fetchRequestWithLineItems(row.request_id);
@@ -235,7 +239,7 @@ export function startRealtimeSync(): void {
     .channel("requests-changes")
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "requests" }, async (payload) => {
       const row = payload.new as RequestRow;
-      if (row.status === "pending" && payload.old && (payload.old as RequestRow).status === "draft") {
+      if (row.status === "pending" && payload.old && (payload.old as RequestRow).status === "committed") {
         const request = await fetchRequestWithLineItems(row.request_id);
         eventBus.emit("RequestSubmitted", { request });
       }
