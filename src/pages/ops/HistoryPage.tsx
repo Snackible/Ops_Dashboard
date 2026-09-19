@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataClient } from "../../lib/data";
-import { readFulfillmentLog } from "../../lib/integrations/fulfillmentSheetLog";
 import { StatusPill } from "../../components/StatusPill";
 import { EmptyState } from "../../components/EmptyState";
 import { SkeletonRow } from "../../components/Skeleton";
@@ -16,15 +15,18 @@ export function HistoryPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([dataClient.getRequests(), dataClient.getAccounts(), dataClient.getInventory()]).then(
-      ([reqs, accts, inv]) => {
-        setRequests(reqs.filter((r) => r.status === "approved" || r.status === "declined"));
-        setAccounts(accts);
-        setInventory(inv);
-        setLoading(false);
-      }
-    );
-    setSheetRows(readFulfillmentLog());
+    Promise.all([
+      dataClient.getRequests(),
+      dataClient.getAccounts(),
+      dataClient.getInventory(),
+      dataClient.getFulfillmentLog(),
+    ]).then(([reqs, accts, inv, sheet]) => {
+      setRequests(reqs.filter((r) => r.status === "approved" || r.status === "declined"));
+      setAccounts(accts);
+      setInventory(inv);
+      setSheetRows(sheet);
+      setLoading(false);
+    });
   }, []);
 
   const accountsById = new Map(accounts.map((a) => [a.accountId, a]));
@@ -127,10 +129,7 @@ export function HistoryPage() {
           </table>
           {sheetRows.length === 0 && (
             <div className="p-6">
-              <EmptyState
-                title="No rows yet"
-                body="This fills in as Ops approves requests (mocked locally until Sheets is wired up)."
-              />
+              <EmptyState title="No rows yet" body="This fills in as Ops approves requests." />
             </div>
           )}
         </div>

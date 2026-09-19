@@ -1,6 +1,7 @@
 import { registerOpsPopupSound } from "./opsPopupSound";
 import { registerB2BPopup } from "./b2bPopup";
 import { registerFulfillmentSheetLog } from "./fulfillmentSheetLog";
+import { isSheetsConfigured } from "../data/sheetsClient";
 
 let registered = false;
 
@@ -15,5 +16,9 @@ export function registerAllSubscribers(): void {
   registered = true;
   registerOpsPopupSound();
   registerB2BPopup();
-  registerFulfillmentSheetLog();
+
+  // On the Sheets backend the fulfillment rows are written server-side,
+  // inside the same approval that flips the status. Registering the mock
+  // writer too would double-log every approval.
+  if (!isSheetsConfigured) registerFulfillmentSheetLog();
 }

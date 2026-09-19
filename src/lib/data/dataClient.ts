@@ -1,12 +1,13 @@
-import type { B2BAccount, InventoryItem, StockRequest, Tier } from "../types";
+import type { B2BAccount, FulfillmentLogRow, InventoryItem, StockRequest, Tier } from "../types";
 
 /**
  * Everything the UI needs from a backend, named after what the app does
  * (commit an order, push an order, decide a request) rather than how any
  * one backend stores it. `mockDataClient` implements this against
- * localStorage so the whole app runs with no server; `supabaseDataClient`
- * implementing the same interface is the real-backend swap-in — nothing
- * outside this file needs to change either way.
+ * localStorage so the whole app runs with no server; `sheetsDataClient`
+ * implementing the same interface against a Google Sheet (via an Apps
+ * Script web app, see apps-script/Code.gs) is the real-backend swap-in —
+ * nothing outside this file needs to change either way.
  */
 export interface DataClient {
   getInventory(): Promise<InventoryItem[]>;
@@ -49,4 +50,7 @@ export interface DataClient {
     approve: boolean,
     decisionNote: string | null
   ): Promise<StockRequest>;
+
+  /** Fulfillment rows written on approval - a sheet tab, or its mock stand-in. */
+  getFulfillmentLog(): Promise<FulfillmentLogRow[]>;
 }

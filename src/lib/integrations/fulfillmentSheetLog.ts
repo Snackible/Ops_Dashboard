@@ -1,37 +1,17 @@
 import { eventBus } from "../events";
 import { dataClient } from "../data";
+import { appendMockFulfillmentSheet } from "./mockFulfillmentSheet";
 import type { FulfillmentLogRow, StockRequest } from "../types";
 
-const SHEET_STORAGE_KEY = "snackible-ops-fulfillment-sheet-mock-v2";
-
-function readMockSheet(): FulfillmentLogRow[] {
-  try {
-    const raw = localStorage.getItem(SHEET_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as FulfillmentLogRow[]) : [];
-  } catch {
-    return [];
-  }
-}
-
 /**
- * Stands in for the real Google Sheets API call (service-account auth +
- * spreadsheets.values.append). Swapping this one function for a real
- * network call is the entire migration — every caller above it is unaware
- * this is a sheet at all, only that fulfillment rows get "written" somewhere.
- * Failures here are caught by the event bus and never block an approval.
+ * Subscriber #3 on the event bus: writes approved line items to the
+ * fulfillment log, and only on approval.
+ *
+ * This is registered ONLY when the app is running on the localStorage mock.
+ * With the Google Sheets backend, the same rows are appended inside the
+ * approval transaction in apps-script/Code.gs, where they belong - a browser
+ * that closes mid-approval can't leave the log half-written.
  */
-async function appendRowsToSheet(rows: FulfillmentLogRow[]): Promise<void> {
-  const existing = readMockSheet();
-  const next = [...existing, ...rows];
-  localStorage.setItem(SHEET_STORAGE_KEY, JSON.stringify(next));
-  // eslint-disable-next-line no-console
-  console.info(`[fulfillment-log] appended ${rows.length} row(s) to the mock sheet:`, rows);
-}
-
-export function readFulfillmentLog(): FulfillmentLogRow[] {
-  return readMockSheet();
-}
-
 async function buildRows(request: StockRequest): Promise<FulfillmentLogRow[]> {
   const account = await dataClient.getAccount(request.accountId);
   const inventory = await dataClient.getInventory();
@@ -56,13 +36,12 @@ async function buildRows(request: StockRequest): Promise<FulfillmentLogRow[]> {
   });
 }
 
-/** Subscriber #3 on the event bus: the only one that writes to the fulfillment sheet, and only on approval. */
 export function registerFulfillmentSheetLog(): void {
   eventBus.on("RequestApproved", async ({ request }) => {
     const rows = await buildRows(request);
     if (rows.length === 0) return;
     try {
-      await appendRowsToSheet(rows);
+      appendMockFulfillmentSheet(rows);
     } catch (err) {
       console.error("[fulfillment-log] failed to append rows, will not block the approval", err);
     }

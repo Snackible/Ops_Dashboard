@@ -1,5 +1,6 @@
 import catalogSeed from "../../data/catalog.json";
 import { eventBus } from "../events";
+import { readMockFulfillmentSheet } from "../integrations/mockFulfillmentSheet";
 import type { B2BAccount, InventoryItem, StockRequest, Tier } from "../types";
 import type { DataClient } from "./dataClient";
 
@@ -199,5 +200,9 @@ export const mockDataClient: DataClient = {
     eventBus.emit(approve ? "RequestApproved" : "RequestDeclined", { request });
 
     return tick(request);
+  },
+
+  async getFulfillmentLog() {
+    return tick(readMockFulfillmentSheet());
   },
 };
