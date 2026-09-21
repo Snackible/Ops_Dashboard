@@ -1,23 +1,16 @@
-const url = import.meta.env.VITE_SHEETS_API_URL as string | undefined;
-const token = import.meta.env.VITE_SHEETS_API_TOKEN as string | undefined;
+// Real backend calls always go to `/api/sheets` — same origin as the app
+// itself (a Vercel serverless function, see api/sheets.js), so there's no
+// separate URL to configure and no CORS to work around. Production builds
+// use it automatically; local `npm run dev` (plain Vite, no functions
+// running) stays on the mock unless VITE_USE_SHEETS_API=true and you're
+// running `vercel dev` instead, which serves both together.
+export const isSheetsConfigured = import.meta.env.PROD || import.meta.env.VITE_USE_SHEETS_API === "true";
 
-export const isSheetsConfigured = Boolean(url);
-
-/**
- * Calls the Apps Script web app (see apps-script/Code.gs).
- *
- * The content type is deliberately text/plain: that keeps this a CORS
- * "simple request", and Apps Script web apps cannot answer the preflight
- * OPTIONS that application/json would trigger. The body is still JSON.
- */
 export async function callSheets<T>(action: string, params: Record<string, unknown> = {}): Promise<T> {
-  if (!url) throw new Error("Google Sheets backend is not configured - set VITE_SHEETS_API_URL");
-
-  const response = await fetch(url, {
+  const response = await fetch("/api/sheets", {
     method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ action, token, ...params }),
-    redirect: "follow",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, ...params }),
   });
 
   if (!response.ok) throw new Error(`Sheets backend returned ${response.status}`);
