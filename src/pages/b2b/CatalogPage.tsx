@@ -22,12 +22,25 @@ function CatalogRow({
 }) {
   const c = TIER_CONFIG[item.tier];
   const overStock = qty > item.currentStock;
+  const stockBadge =
+    item.currentStock <= 0
+      ? { label: "Out of stock", cls: "bg-danger/10 text-danger border-danger/30" }
+      : item.currentStock < 10
+        ? { label: `${item.currentStock} left`, cls: "bg-warning/10 text-warning border-warning/30" }
+        : { label: `${item.currentStock} in stock`, cls: "bg-success/10 text-success border-success/30" };
   return (
     <div className={`flex items-center gap-3 rounded-md border border-l-[3px] border-line bg-paper-raised px-3 py-2 ${c.borderSolid}`}>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium leading-tight">{item.productName}</p>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <p className="truncate text-[13px] font-medium leading-tight">{item.productName}</p>
+          <span
+            className={`shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10.5px] font-semibold tabular-nums ${stockBadge.cls}`}
+          >
+            {stockBadge.label}
+          </span>
+        </div>
         <p className="mt-0.5 font-mono text-[10.5px] tabular-nums text-ink-faint">
-          {item.category} · {item.grammageG}g · ₹{item.mrpInr} · avail {item.currentStock}
+          {item.category} · {item.grammageG}g · ₹{item.mrpInr}
         </p>
         {overStock && <p className="mt-0.5 text-[10.5px] text-warning">Not enough in stock — this will be sent to Ops as a request.</p>}
       </div>
