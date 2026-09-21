@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataClient } from "../../lib/data";
+import { liveStore, useLiveStore } from "../../lib/data/liveStore";
 import { notificationStore } from "../../lib/integrations/notificationStore";
 import { LoadingState } from "../../components/Spinner";
 import { RefreshButton } from "../../components/RefreshButton";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
 import { TierPicker } from "../../components/TierPicker";
-import type { InventoryItem, Tier } from "../../lib/types";
+import type { Tier } from "../../lib/types";
 
 type TierFilter = "all" | Tier;
 
@@ -48,20 +49,13 @@ function StockInput({ value, onCommit }: { value: number; onCommit: (next: numbe
 }
 
 export function InventoryPage() {
-  const [items, setItems] = useState<InventoryItem[]>([]);
+  // Reads shared state instead of fetching its own copy on mount - see
+  // liveStore.ts. Only a manual refresh or a mutation made right here
+  // updates it; navigating to/from this page never fires a network call.
+  const { inventory: items, inventoryReady } = useLiveStore();
+  const loading = !inventoryReady;
   const [category, setCategory] = useState("All");
   const [tierFilter, setTierFilter] = useState<TierFilter>("all");
-  const [loading, setLoading] = useState(true);
-
-  async function refresh() {
-    const list = await dataClient.getInventory();
-    setItems(list);
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    refresh();
-  }, []);
 
   const categories = useMemo(() => ["All", ...Array.from(new Set(items.map((i) => i.category)))], [items]);
   const filtered = items.filter(
@@ -79,30 +73,30 @@ export function InventoryPage() {
   async function handleStockChange(skuId: string, value: number) {
     try {
       await dataClient.updateStock(skuId, Math.max(0, value));
-      refresh();
+      liveStore.refreshInventory();
     } catch (err) {
       reportError("Couldn't update stock", err);
-      refresh();
+      liveStore.refreshInventory();
     }
   }
 
   async function handleActiveToggle(skuId: string, active: boolean) {
     try {
       await dataClient.setActive(skuId, active);
-      refresh();
+      liveStore.refreshInventory();
     } catch (err) {
       reportError("Couldn't update active status", err);
-      refresh();
+      liveStore.refreshInventory();
     }
   }
 
   async function handleTierChange(skuId: string, tier: Tier) {
     try {
       await dataClient.setTier(skuId, tier);
-      refresh();
+      liveStore.refreshInventory();
     } catch (err) {
       reportError("Couldn't update tier", err);
-      refresh();
+      liveStore.refreshInventory();
     }
   }
 
@@ -112,7 +106,7 @@ export function InventoryPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="font-display text-2xl font-semibold">Inventory</h1>
-            <RefreshButton onRefresh={refresh} />
+            <RefreshButton onRefresh={liveStore.refreshInventory} />
           </div>
           <p className="text-sm text-ink-soft">
             {loading ? "Loading…" : `${items.length} SKUs from the ratecard. Stock starts at 0 until counted.`}

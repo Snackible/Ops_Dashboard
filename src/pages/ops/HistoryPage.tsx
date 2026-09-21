@@ -1,34 +1,38 @@
 import { useEffect, useMemo, useState } from "react";
-import { dataClient } from "../../lib/data";
+import { liveStore, useLiveStore } from "../../lib/data/liveStore";
 import { StatusPill } from "../../components/StatusPill";
 import { EmptyState } from "../../components/EmptyState";
 import { SkeletonRow } from "../../components/Skeleton";
-import type { B2BAccount, FulfillmentLogRow, InventoryItem, StockRequest } from "../../lib/types";
+import { RefreshButton } from "../../components/RefreshButton";
 
 export function HistoryPage() {
-  const [requests, setRequests] = useState<StockRequest[]>([]);
-  const [accounts, setAccounts] = useState<B2BAccount[]>([]);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [sheetRows, setSheetRows] = useState<FulfillmentLogRow[]>([]);
+  // Accounts/inventory/requests read shared state - see liveStore.ts. The
+  // fulfillment sheet is the one thing fetched here specifically, lazily on
+  // first visit only (guarded by fulfillmentLogReady) since History is a
+  // rarely-visited page and there's no reason to load it for everyone at
+  // boot the way the more commonly-needed data is.
+  const {
+    requests: allRequests,
+    accounts,
+    inventory,
+    fulfillmentLog: sheetRows,
+    requestsReady,
+    accountsReady,
+    inventoryReady,
+    fulfillmentLogReady,
+  } = useLiveStore();
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<"requests" | "sheet">("requests");
-  const [loading, setLoading] = useState(true);
+  const loading = !requestsReady || !accountsReady || !inventoryReady || !fulfillmentLogReady;
 
   useEffect(() => {
-    Promise.all([
-      dataClient.getRequests(),
-      dataClient.getAccounts(),
-      dataClient.getInventory(),
-      dataClient.getFulfillmentLog(),
-    ]).then(([reqs, accts, inv, sheet]) => {
-      setRequests(reqs.filter((r) => r.status === "approved" || r.status === "declined"));
-      setAccounts(accts);
-      setInventory(inv);
-      setSheetRows(sheet);
-      setLoading(false);
-    });
-  }, []);
+    if (!fulfillmentLogReady) liveStore.refreshFulfillmentLog();
+  }, [fulfillmentLogReady]);
 
+  const requests = useMemo(
+    () => allRequests.filter((r) => r.status === "approved" || r.status === "declined"),
+    [allRequests]
+  );
   const accountsById = new Map(accounts.map((a) => [a.accountId, a]));
   const inventoryBySku = new Map(inventory.map((i) => [i.skuId, i]));
 
@@ -39,7 +43,10 @@ export function HistoryPage() {
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold">History</h1>
+      <div className="mb-1 flex items-center gap-2">
+        <h1 className="font-display text-2xl font-semibold">History</h1>
+        <RefreshButton onRefresh={() => Promise.all([liveStore.refreshRequests(), liveStore.refreshFulfillmentLog()])} />
+      </div>
       <p className="mb-6 text-sm text-ink-soft">Every decided request, plus what actually got written to the fulfillment sheet.</p>
 
       <div className="mb-4 flex items-center justify-between gap-4">

@@ -1,34 +1,30 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { dataClient } from "../../lib/data";
+import { liveStore, useLiveStore } from "../../lib/data/liveStore";
 import { useAuth } from "../../lib/auth/AuthContext";
 import { notificationStore } from "../../lib/integrations/notificationStore";
 import { SkeletonRow } from "../../components/Skeleton";
 import { EmptyState } from "../../components/EmptyState";
-import type { InventoryItem, StockRequest } from "../../lib/types";
+import { RefreshButton } from "../../components/RefreshButton";
 
 export function CommittedOrdersPage() {
   const { user } = useAuth();
-  const [orders, setOrders] = useState<StockRequest[]>([]);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Reads shared state instead of fetching its own copy on mount - see
+  // liveStore.ts. `requests` is the full ops-wide list (the background
+  // poller already fetches all of it into every tab to detect status
+  // changes), filtered down to this account's own committed orders.
+  const { requests, inventory, requestsReady, inventoryReady } = useLiveStore();
+  const loading = !requestsReady || !inventoryReady;
   const [pushingId, setPushingId] = useState<string | null>(null);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
 
-  async function refresh() {
-    if (!user?.accountId) return;
-    const [committed, inv] = await Promise.all([
-      dataClient.getCommittedOrders(user.accountId),
-      dataClient.getInventory(),
-    ]);
-    setOrders(committed.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-    setInventory(inv);
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.accountId]);
+  const orders = useMemo(
+    () =>
+      requests
+        .filter((r) => r.accountId === user?.accountId && r.status === "committed")
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [requests, user?.accountId]
+  );
 
   const bySku = new Map(inventory.map((i) => [i.skuId, i]));
 
@@ -45,7 +41,7 @@ export function CommittedOrdersPage() {
     try {
       await dataClient.pushOrder(requestId);
       notificationStore.push({ kind: "success", title: "Order pushed", body: "Sent to Ops for review." });
-      await refresh();
+      liveStore.refreshRequests();
     } catch (err) {
       reportError("Couldn't push order", err);
     } finally {
@@ -59,7 +55,8 @@ export function CommittedOrdersPage() {
     try {
       await dataClient.cancelOrder(requestId);
       notificationStore.push({ kind: "success", title: "Order cancelled", body: "Reserved stock was released." });
-      await refresh();
+      liveStore.refreshRequests();
+      liveStore.refreshInventory();
     } catch (err) {
       reportError("Couldn't cancel order", err);
     } finally {
@@ -69,7 +66,10 @@ export function CommittedOrdersPage() {
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold">Committed</h1>
+      <div className="mb-1 flex items-center gap-2">
+        <h1 className="font-display text-2xl font-semibold">Committed</h1>
+        <RefreshButton onRefresh={liveStore.refreshRequests} />
+      </div>
       <p className="mb-6 text-sm text-ink-soft">
         Reserved from stock, not yet sent to Ops. Push each order whenever you're ready.
       </p>

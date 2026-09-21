@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { dataClient } from "../../lib/data";
+import { liveStore, useLiveStore } from "../../lib/data/liveStore";
+import { RefreshButton } from "../../components/RefreshButton";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
 import { SkeletonCard } from "../../components/Skeleton";
 import type { InventoryItem, Tier } from "../../lib/types";
@@ -74,20 +76,14 @@ function TierColumn({
 }
 
 export function TierBoardPage() {
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Reads shared state instead of fetching its own copy on mount - see
+  // liveStore.ts. Navigating to/from this page never fires a network call
+  // on its own; only a manual refresh or dropping an item onto a new tier
+  // updates it.
+  const { inventory: items, inventoryReady } = useLiveStore();
+  const loading = !inventoryReady;
   const [category, setCategory] = useState("All");
   const [draggedSku, setDraggedSku] = useState<string | null>(null);
-
-  async function refresh() {
-    const list = await dataClient.getInventory();
-    setItems(list);
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    refresh();
-  }, []);
 
   const categories = useMemo(() => ["All", ...Array.from(new Set(items.map((i) => i.category)))], [items]);
   const filtered = category === "All" ? items : items.filter((i) => i.category === category);
@@ -98,14 +94,17 @@ export function TierBoardPage() {
     setDraggedSku(null);
     if (!item || item.tier === tier) return;
     await dataClient.setTier(draggedSku, tier);
-    refresh();
+    liveStore.refreshInventory();
   }
 
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-semibold">Tiers</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display text-2xl font-semibold">Tiers</h1>
+            <RefreshButton onRefresh={liveStore.refreshInventory} />
+          </div>
           <p className="text-sm text-ink-soft">
             Drag a product between columns to re-file it. Purely manual — nothing here is computed from stock counts.
           </p>

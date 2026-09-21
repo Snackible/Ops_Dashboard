@@ -1,12 +1,11 @@
-import { useEffect, useState } from "react";
-import { dataClient } from "../../lib/data";
+import { useMemo } from "react";
+import { liveStore, useLiveStore } from "../../lib/data/liveStore";
 import { useAuth } from "../../lib/auth/AuthContext";
-import { eventBus } from "../../lib/events";
 import { StatusPill } from "../../components/StatusPill";
 import { SkeletonRow } from "../../components/Skeleton";
 import { EmptyState } from "../../components/EmptyState";
 import { RefreshButton } from "../../components/RefreshButton";
-import type { InventoryItem, ProductRequest, ProductRequestStatus, StockRequest } from "../../lib/types";
+import type { ProductRequestStatus } from "../../lib/types";
 
 const PRODUCT_REQUEST_STATUS_CONFIG: Record<ProductRequestStatus, { label: string; classes: string }> = {
   pending: { label: "Pending", classes: "bg-warning-soft text-warning" },
@@ -17,45 +16,33 @@ const PRODUCT_REQUEST_STATUS_CONFIG: Record<ProductRequestStatus, { label: strin
 
 export function MyRequestsPage() {
   const { user } = useAuth();
-  const [requests, setRequests] = useState<StockRequest[]>([]);
-  const [productRequests, setProductRequests] = useState<ProductRequest[]>([]);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Reads shared state instead of fetching its own copy on mount - see
+  // liveStore.ts. `requests`/`productRequests` are the full ops-wide lists
+  // (the background poller already fetches all of it into every tab to
+  // detect status changes), filtered down to this account's own.
+  const { requests: allRequests, productRequests: allProductRequests, inventory, requestsReady, productRequestsReady, inventoryReady } = useLiveStore();
+  const loading = !requestsReady || !productRequestsReady || !inventoryReady;
 
-  // No polling of our own here - the global sheets poller (sheetsPolling.ts)
-  // already fetches both requests and product requests on its own intervals,
-  // so re-polling independently would just double the read cost. Instead we
-  // react to the events that poller (or the mock client, synchronously)
-  // emits on transitions this account cares about, plus a manual refresh.
-  async function refresh() {
-    if (!user?.accountId) return;
-    const [reqs, preqs] = await Promise.all([
-      dataClient.getRequestsForAccount(user.accountId),
-      dataClient.getProductRequestsForAccount(user.accountId),
-    ]);
-    setRequests(
-      reqs
-        .filter((r) => r.status !== "committed")
-        .sort((a, b) => (b.submittedAt ?? "").localeCompare(a.submittedAt ?? ""))
-    );
-    setProductRequests(preqs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    if (!user?.accountId) return;
-    dataClient.getInventory().then(setInventory);
-    refresh();
-    const unsubs = [
-      eventBus.on("RequestApproved", refresh),
-      eventBus.on("RequestDeclined", refresh),
-      eventBus.on("ProductRequestDecided", refresh),
-    ];
-    return () => unsubs.forEach((unsub) => unsub());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.accountId]);
+  const requests = useMemo(
+    () =>
+      allRequests
+        .filter((r) => r.accountId === user?.accountId && r.status !== "committed")
+        .sort((a, b) => (b.submittedAt ?? "").localeCompare(a.submittedAt ?? "")),
+    [allRequests, user?.accountId]
+  );
+  const productRequests = useMemo(
+    () =>
+      allProductRequests
+        .filter((r) => r.accountId === user?.accountId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [allProductRequests, user?.accountId]
+  );
 
   const bySku = new Map(inventory.map((i) => [i.skuId, i]));
+
+  function refresh() {
+    return Promise.all([liveStore.refreshRequests(), liveStore.refreshProductRequests()]);
+  }
 
   return (
     <div>

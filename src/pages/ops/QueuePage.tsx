@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { dataClient } from "../../lib/data";
+import { liveStore, useLiveStore } from "../../lib/data/liveStore";
 import { useAuth } from "../../lib/auth/AuthContext";
-import { eventBus } from "../../lib/events";
 import { notificationStore } from "../../lib/integrations/notificationStore";
 import { SkeletonRow } from "../../components/Skeleton";
 import { EmptyState } from "../../components/EmptyState";
@@ -97,40 +97,12 @@ function RequestCard({
 }
 
 export function QueuePage() {
-  const [requests, setRequests] = useState<StockRequest[]>([]);
-  const [accounts, setAccounts] = useState<B2BAccount[]>([]);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // No polling of our own here - the global sheets poller (sheetsPolling.ts)
-  // already fetches requests on an interval to drive the ops chime, so
-  // re-polling independently would just double the read cost for the same
-  // data. Instead we react to the events that poller (or the mock client,
-  // synchronously) emits on exactly the transitions this page cares about,
-  // plus a manual refresh for "I want it right now".
-  async function refresh() {
-    const reqs = await dataClient.getRequests();
-    setRequests(reqs);
-    setLoading(false);
-  }
-
-  async function refreshAll() {
-    const [accts, inv] = await Promise.all([dataClient.getAccounts(), dataClient.getInventory()]);
-    setAccounts(accts);
-    setInventory(inv);
-    await refresh();
-  }
-
-  useEffect(() => {
-    refreshAll();
-    const unsubs = [
-      eventBus.on("RequestSubmitted", refresh),
-      eventBus.on("RequestApproved", refresh),
-      eventBus.on("RequestDeclined", refresh),
-    ];
-    return () => unsubs.forEach((unsub) => unsub());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Reads shared state instead of fetching its own copy on mount - see
+  // liveStore.ts. The background poller keeps `requests` current; a manual
+  // refresh (or a decision made right here) is what updates it otherwise.
+  // Navigating to/from this page never fires a network call on its own.
+  const { requests, accounts, inventory, requestsReady, accountsReady, inventoryReady } = useLiveStore();
+  const loading = !requestsReady || !accountsReady || !inventoryReady;
 
   const pending = useMemo(
     () => requests.filter((r) => r.status === "pending").sort((a, b) => (a.submittedAt ?? "").localeCompare(b.submittedAt ?? "")),
@@ -143,7 +115,7 @@ export function QueuePage() {
     <div>
       <div className="mb-1 flex items-center gap-2">
         <h1 className="font-display text-2xl font-semibold">Requests queue</h1>
-        <RefreshButton onRefresh={refreshAll} />
+        <RefreshButton onRefresh={liveStore.refreshAll} />
       </div>
       <p className="mb-6 text-sm text-ink-soft">
         {loading
@@ -170,7 +142,9 @@ export function QueuePage() {
             account={accountsById.get(req.accountId)}
             inventory={inventoryBySku}
             onDecided={() => {
-              refresh();
+              liveStore.refreshRequests();
+              // Approving writes a fulfillment row - keep History in sync if it's already been loaded this session (see liveStore.ts).
+              if (liveStore.getState().fulfillmentLogReady) liveStore.refreshFulfillmentLog();
               notificationStore.push({ kind: "success", title: "Decision saved", body: "The B2B account has been notified." });
             }}
           />

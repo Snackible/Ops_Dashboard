@@ -1,13 +1,16 @@
 import { eventBus } from "../events";
 import { sheetsDataClient } from "./sheetsDataClient";
+import { liveStore } from "./liveStore";
 import type { RequestStatus } from "../types";
 
 /**
- * Sheets has no change feed, so this poller is what turns "someone else
- * changed a row" into the domain events every subscriber (Ops popup + sound,
- * B2B popup, and now each page's own refresh - see QueuePage/ProductRequestsPage/
- * MyRequestsPage) already listens on. It diffs each poll against the statuses
- * it saw last time and emits only on transitions.
+ * Sheets has no change feed, so this poller is the one place that fetches
+ * requests/product requests on an interval. Each fetch does double duty: it
+ * writes straight into liveStore.ts (which every page that shows this data
+ * reads from, instead of fetching its own copy on mount or on nav) and it
+ * diffs against what it saw last time to emit domain events for the popup +
+ * sound subscribers (Ops popup, B2B popup) on exactly the transitions they
+ * care about.
  *
  * Requests (the Ops queue) and product requests poll on separate, independent
  * intervals - the queue is the actual "did a B2B account just push an order"
@@ -33,6 +36,7 @@ export function startSheetsPolling(requestsIntervalMs = 6000, productRequestsInt
   const pollRequests = async () => {
     try {
       const requests = await sheetsDataClient.getRequests();
+      liveStore.setRequests(requests);
       for (const request of requests) {
         const previous = lastSeen.get(request.requestId);
         lastSeen.set(request.requestId, request.status);
@@ -55,6 +59,7 @@ export function startSheetsPolling(requestsIntervalMs = 6000, productRequestsInt
   const pollProductRequests = async () => {
     try {
       const productRequests = await sheetsDataClient.getProductRequests();
+      liveStore.setProductRequests(productRequests);
       for (const request of productRequests) {
         const previous = lastSeenProductRequests.get(request.requestId);
         lastSeenProductRequests.set(request.requestId, request.status);

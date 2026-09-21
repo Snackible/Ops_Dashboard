@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { dataClient } from "../../lib/data";
+import { liveStore, useLiveStore } from "../../lib/data/liveStore";
 import { useAuth } from "../../lib/auth/AuthContext";
 import { notificationStore } from "../../lib/integrations/notificationStore";
 import { LoadingState } from "../../components/Spinner";
@@ -76,8 +77,12 @@ function CatalogRow({
 }
 
 export function CatalogPage() {
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Reads shared state instead of fetching its own copy on mount - see
+  // liveStore.ts. Inventory is public catalog data, so it's safe to share
+  // the same slice Ops's pages read; only a manual refresh or an order
+  // that actually changes stock updates it otherwise.
+  const { inventory: items, inventoryReady } = useLiveStore();
+  const loading = !inventoryReady;
   const [tierFilter, setTierFilter] = useState<TierFilter>("all");
   const [category, setCategory] = useState<string>("All");
   const [search, setSearch] = useState("");
@@ -86,16 +91,6 @@ export function CatalogPage() {
   const [busy, setBusy] = useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
-
-  async function loadInventory() {
-    const inv = await dataClient.getInventory();
-    setItems(inv);
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    loadInventory();
-  }, []);
 
   const categories = useMemo(() => ["All", ...Array.from(new Set(items.map((i) => i.category)))], [items]);
 
@@ -141,6 +136,14 @@ export function CatalogPage() {
         );
       }
       await Promise.all(toRequest.map(([skuId, qty]) => dataClient.requestProduct(user.accountId!, skuId, qty, null)));
+      // Committed/My Requests read the shared store now (see liveStore.ts) -
+      // refresh the slices this order just touched so they show up there
+      // immediately instead of waiting for the next poll tick.
+      if (toCommit.length > 0) {
+        liveStore.refreshInventory();
+        liveStore.refreshRequests();
+      }
+      if (toRequest.length > 0) liveStore.refreshProductRequests();
 
       const parts: string[] = [];
       if (toCommit.length > 0) parts.push("reserved from stock — push it from the Committed tab");
@@ -247,7 +250,7 @@ export function CatalogPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="font-display text-2xl font-semibold">New Order</h1>
-            <RefreshButton onRefresh={loadInventory} />
+            <RefreshButton onRefresh={liveStore.refreshInventory} />
           </div>
           <p className="text-sm text-ink-soft">
             Add items, then review. In-stock quantities commit; anything over what's available gets sent to Ops as a request.

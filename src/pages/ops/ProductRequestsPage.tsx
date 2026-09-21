@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { dataClient } from "../../lib/data";
+import { liveStore, useLiveStore } from "../../lib/data/liveStore";
 import { useAuth } from "../../lib/auth/AuthContext";
-import { eventBus } from "../../lib/events";
 import { notificationStore } from "../../lib/integrations/notificationStore";
 import { LoadingState } from "../../components/Spinner";
 import { EmptyState } from "../../components/EmptyState";
@@ -111,38 +111,13 @@ function GroupCard({
 }
 
 export function ProductRequestsPage() {
-  const [requests, setRequests] = useState<ProductRequest[]>([]);
-  const [accounts, setAccounts] = useState<B2BAccount[]>([]);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // No polling of our own here - the global sheets poller (sheetsPolling.ts)
-  // already fetches product requests on its own (slower) interval to drive
-  // the ops alert, so re-polling independently would just double the read
-  // cost. Instead we react to the events that poller (or the mock client,
-  // synchronously) emits, plus a manual refresh for "I want it right now".
-  async function refresh() {
-    const reqs = await dataClient.getProductRequests();
-    setRequests(reqs);
-    setLoading(false);
-  }
-
-  async function refreshAll() {
-    const [accts, inv] = await Promise.all([dataClient.getAccounts(), dataClient.getInventory()]);
-    setAccounts(accts);
-    setInventory(inv);
-    await refresh();
-  }
-
-  useEffect(() => {
-    refreshAll();
-    const unsubs = [
-      eventBus.on("ProductRequestSubmitted", refresh),
-      eventBus.on("ProductRequestDecided", refresh),
-    ];
-    return () => unsubs.forEach((unsub) => unsub());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Reads shared state instead of fetching its own copy on mount - see
+  // liveStore.ts. The background poller keeps `productRequests` current
+  // (on its slower cadence); a manual refresh or a decision made right here
+  // is what updates it otherwise. Navigating to/from this page never fires
+  // a network call on its own.
+  const { productRequests: requests, accounts, inventory, productRequestsReady, accountsReady, inventoryReady } = useLiveStore();
+  const loading = !productRequestsReady || !accountsReady || !inventoryReady;
 
   const accountsById = new Map(accounts.map((a) => [a.accountId, a]));
   const inventoryBySku = new Map(inventory.map((i) => [i.skuId, i]));
@@ -176,7 +151,7 @@ export function ProductRequestsPage() {
     <div>
       <div className="mb-1 flex items-center gap-2">
         <h1 className="font-display text-2xl font-semibold">Product Requests</h1>
-        <RefreshButton onRefresh={refreshAll} />
+        <RefreshButton onRefresh={liveStore.refreshAll} />
       </div>
       <p className="mb-6 text-sm text-ink-soft">
         {loading
@@ -193,7 +168,7 @@ export function ProductRequestsPage() {
           )}
           <div className="space-y-4">
             {groups.map((g) => (
-              <GroupCard key={g.skuId} group={g} accountsById={accountsById} onDecided={refresh} />
+              <GroupCard key={g.skuId} group={g} accountsById={accountsById} onDecided={liveStore.refreshProductRequests} />
             ))}
           </div>
 

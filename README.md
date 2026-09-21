@@ -167,26 +167,40 @@ for the honest tradeoff. `commitOrder` also validates every line against
 current stock *before* writing anything, so an order either reserves in
 full or not at all.
 
-**Live updates without a change feed**: Sheets has no realtime subscription
-API, so `sheetsPolling.ts` is the one place that polls - `getRequests` (the
-Ops queue) on a fast interval and `getProductRequests` on a much slower one,
-since the queue is the actual "did a B2B account just push" workflow and
-product-request decisions aren't as time-sensitive. It diffs each poll
-against what it saw last time and emits `RequestSubmitted` / `RequestApproved`
-/ `RequestDeclined` / `ProductRequestSubmitted` / `ProductRequestDecided` onto
-the event bus. Every page that shows this data (`QueuePage`,
-`ProductRequestsPage`, `MyRequestsPage`, on top of `opsPopupSound.ts` and
-`b2bPopup.ts`) subscribes to those events to refresh itself instead of
-running its own polling timer - Google Sheets' free-tier read quota is per
-minute *per service account*, shared across every open tab of the whole app,
-so one poller with two well-separated cadences is what keeps normal usage
-(a handful of concurrent Ops/B2B tabs) comfortably under it; several
-independent per-page timers is what exhausted it before. `listSheets()`
+**Live updates without a change feed, and without refetching on every nav
+click**: `liveStore.ts` is a small external store (`useSyncExternalStore`,
+no extra library) holding the ops-wide `accounts` / `inventory` / `requests`
+/ `productRequests` that most pages need. Every page that shows any of this
+(`QueuePage`, `ProductRequestsPage`, `InventoryPage`, `TierBoardPage`, and
+`CatalogPage`/`CommittedOrdersPage`/`MyRequestsPage` on the B2B side, which
+filter the same ops-wide `requests`/`productRequests` down to the signed-in
+account) just reads from the store - mounting or unmounting a page (i.e.
+clicking between nav tabs) never fires a network call on its own, since the
+data lives outside any component and survives navigation. The only things
+that ever call a `refreshX()` (the only place a real fetch happens) are: one
+seed call at app boot (`main.tsx`), the background poller below, a manual
+`RefreshButton` on each page, and a mutation's own success handler
+refreshing the slice it just changed (e.g. committing an order refreshes
+`inventory` and `requests`, approving a request refreshes `requests` and,
+if History has already been opened this session, the fulfillment log).
+
+Sheets has no realtime subscription API either, so `sheetsPolling.ts` is the
+one place that polls on a timer - `getRequests` (the Ops queue) on a fast
+interval and `getProductRequests` on a much slower one, since the queue is
+the actual "did a B2B account just push" workflow and product-request
+decisions aren't as time-sensitive. Each tick writes straight into
+`liveStore` *and* diffs against what it saw last time to emit
+`RequestSubmitted` / `RequestApproved` / `RequestDeclined` /
+`ProductRequestSubmitted` / `ProductRequestDecided` for `opsPopupSound.ts`
+and `b2bPopup.ts` to pick up (sound + toast). Google Sheets' free-tier read
+quota is per minute *per service account*, shared across every open tab of
+the whole app, so one poller with two well-separated cadences - plus pages
+never re-fetching on nav - is what keeps normal usage (a handful of
+concurrent Ops/B2B tabs) comfortably under it; several independent per-page
+timers is what exhausted it before. `listSheets()`
 (`server/lib/sheetsClient.js`) also caches each spreadsheet's tab list for a
 few minutes, since tabs are effectively append-only - that alone halves the
-raw read cost of nearly every action. A `RefreshButton` on each of these
-pages (plus Inventory and New Order) covers "I want it right now" instead of
-waiting out an interval.
+raw read cost of nearly every action.
 
 **Fulfillment log**: written server-side, inside the same `decideRequest`
 call that approves an order — not as a separate step that could be skipped

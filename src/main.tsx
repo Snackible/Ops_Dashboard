@@ -7,9 +7,13 @@ import { ThemeProvider } from "./theme/ThemeContext";
 import { registerAllSubscribers } from "./lib/integrations/registerSubscribers";
 import { startSheetsPolling } from "./lib/data/sheetsPolling";
 import { isSheetsConfigured } from "./lib/data/sheetsClient";
+import { liveStore } from "./lib/data/liveStore";
 import "./styles/tokens.css";
 
 registerAllSubscribers();
+// Seeds accounts/inventory/requests/product requests once, up front, so no
+// individual page needs to fetch its own copy on mount - see liveStore.ts.
+liveStore.refreshAll();
 if (isSheetsConfigured) startSheetsPolling();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
