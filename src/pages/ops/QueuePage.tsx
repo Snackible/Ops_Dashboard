@@ -123,8 +123,9 @@ export function QueuePage() {
     <div>
       <h1 className="font-display text-2xl font-semibold">Requests queue</h1>
       <p className="mb-6 text-sm text-ink-soft">
-        {pending.length} pushed order{pending.length === 1 ? "" : "s"} awaiting a decision — stock is already
-        reserved; declining releases it back.
+        {loading
+          ? "Loading…"
+          : `${pending.length} pushed order${pending.length === 1 ? "" : "s"} awaiting a decision — stock is already reserved; declining releases it back.`}
       </p>
 
       {loading && (

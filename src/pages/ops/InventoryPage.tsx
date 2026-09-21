@@ -1,11 +1,49 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataClient } from "../../lib/data";
-import { SkeletonRow } from "../../components/Skeleton";
+import { LoadingState } from "../../components/Spinner";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
 import { TierPicker } from "../../components/TierPicker";
 import type { InventoryItem, Tier } from "../../lib/types";
 
 type TierFilter = "all" | Tier;
+
+/**
+ * A stock count field synced to the server can't be fully controlled by the
+ * server value - committing a keystroke means a network round trip, and the
+ * next keystroke arrives before it resolves. Editing its own local draft and
+ * only committing on blur/Enter avoids that fight (and avoids firing one
+ * write per digit against a backend where a write is a real network call).
+ */
+function StockInput({ value, onCommit }: { value: number; onCommit: (next: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setDraft(String(value));
+  }, [value, editing]);
+
+  function commit() {
+    setEditing(false);
+    const next = Math.max(0, Number(draft) || 0);
+    setDraft(String(next));
+    if (next !== value) onCommit(next);
+  }
+
+  return (
+    <input
+      type="number"
+      min={0}
+      value={draft}
+      onFocus={() => setEditing(true)}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+      }}
+      className="w-20 rounded-md border border-line bg-paper px-2 py-1 text-center font-mono tabular-nums transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+    />
+  );
+}
 
 export function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -48,7 +86,9 @@ export function InventoryPage() {
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-semibold">Inventory</h1>
-          <p className="text-sm text-ink-soft">{items.length} SKUs from the ratecard. Stock starts at 0 until counted.</p>
+          <p className="text-sm text-ink-soft">
+            {loading ? "Loading…" : `${items.length} SKUs from the ratecard. Stock starts at 0 until counted.`}
+          </p>
         </div>
         <select
           value={category}
@@ -87,11 +127,7 @@ export function InventoryPage() {
       </div>
 
       {loading ? (
-        <div className="space-y-2">
-          <SkeletonRow />
-          <SkeletonRow />
-          <SkeletonRow />
-        </div>
+        <LoadingState label="Loading inventory…" />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-line">
           <table className="w-full text-sm">
@@ -116,13 +152,7 @@ export function InventoryPage() {
                   </td>
                   <td className="px-4 py-2.5 font-mono tabular-nums">₹{item.mrpInr}</td>
                   <td className="px-4 py-2.5">
-                    <input
-                      type="number"
-                      min={0}
-                      value={item.currentStock}
-                      onChange={(e) => handleStockChange(item.skuId, Number(e.target.value))}
-                      className="w-20 rounded-md border border-line bg-paper px-2 py-1 text-center font-mono tabular-nums transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
-                    />
+                    <StockInput value={item.currentStock} onCommit={(next) => handleStockChange(item.skuId, next)} />
                   </td>
                   <td className="px-4 py-2.5">
                     <input

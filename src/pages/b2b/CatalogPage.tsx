@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { dataClient } from "../../lib/data";
 import { useAuth } from "../../lib/auth/AuthContext";
 import { notificationStore } from "../../lib/integrations/notificationStore";
-import { SkeletonRow } from "../../components/Skeleton";
+import { LoadingState } from "../../components/Spinner";
 import { EmptyState } from "../../components/EmptyState";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
 import type { InventoryItem, Tier } from "../../lib/types";
@@ -234,11 +234,7 @@ export function CatalogPage() {
       </div>
 
       {loading ? (
-        <div className="space-y-1.5">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <SkeletonRow key={i} />
-          ))}
-        </div>
+        <LoadingState label="Loading catalog…" />
       ) : filtered.length === 0 ? (
         <EmptyState title="No products match" body="Try a different search term, tier, or category." />
       ) : (
