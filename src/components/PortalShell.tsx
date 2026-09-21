@@ -14,11 +14,12 @@ export function PortalShell({ brandLabel, navItems, children }: PortalShellProps
   const navigate = useNavigate();
 
   function handleSignOut() {
+    const wasB2B = user?.role === "b2b";
     signOut();
-    // For B2B, staying on a /b2b route would just auto-sign back in
-    // immediately (see RequireRole) - go to /login so signing out is
-    // actually visible instead of silently reauthenticating.
-    navigate("/login");
+    // B2B has no real session to sign out of (see RequireRole's bypass) and
+    // /login unconditionally fetches accounts, which errors loudly if the
+    // Accounts tab isn't set up - skip it entirely, straight back to /b2b.
+    navigate(wasB2B ? "/b2b" : "/login");
   }
 
   return (

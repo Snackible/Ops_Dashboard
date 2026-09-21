@@ -29,9 +29,9 @@ export function LoginPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (role === "b2b") {
-      const account = accounts.find((a) => a.accountId === accountId);
-      if (!account) return;
-      signIn({ id: account.accountId, name: account.contactName, role: "b2b", accountId: account.accountId });
+      // B2B has no real login yet (see RequireRole) - if the account list
+      // failed to load or is empty, just drop straight into the bypass
+      // instead of blocking on it.
       navigate("/b2b");
     } else {
       signIn({ id: "ops-" + (name || "team"), name: name || "Ops Team", role: "ops" });
