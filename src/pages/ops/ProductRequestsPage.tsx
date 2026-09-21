@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataClient } from "../../lib/data";
 import { useAuth } from "../../lib/auth/AuthContext";
+import { notificationStore } from "../../lib/integrations/notificationStore";
 import { LoadingState } from "../../components/Spinner";
 import { EmptyState } from "../../components/EmptyState";
 import type { B2BAccount, InventoryItem, ProductRequest, ProductRequestStatus } from "../../lib/types";
@@ -38,6 +39,12 @@ function GroupCard({
     try {
       await dataClient.decideProductRequests(group.skuId, user.name, status, status === "on_hold" ? holdUntil : null);
       onDecided();
+    } catch (err) {
+      notificationStore.push({
+        kind: "danger",
+        title: "Couldn't save decision",
+        body: err instanceof Error ? err.message : "Something went wrong.",
+      });
     } finally {
       setBusy(null);
     }

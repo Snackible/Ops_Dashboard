@@ -32,12 +32,22 @@ export function CommittedOrdersPage() {
 
   const bySku = new Map(inventory.map((i) => [i.skuId, i]));
 
+  function reportError(title: string, err: unknown) {
+    notificationStore.push({
+      kind: "danger",
+      title,
+      body: err instanceof Error ? err.message : "Something went wrong.",
+    });
+  }
+
   async function push(requestId: string) {
     setPushingId(requestId);
     try {
       await dataClient.pushOrder(requestId);
       notificationStore.push({ kind: "success", title: "Order pushed", body: "Sent to Ops for review." });
       await refresh();
+    } catch (err) {
+      reportError("Couldn't push order", err);
     } finally {
       setPushingId(null);
     }
@@ -50,6 +60,8 @@ export function CommittedOrdersPage() {
       await dataClient.cancelOrder(requestId);
       notificationStore.push({ kind: "success", title: "Order cancelled", body: "Reserved stock was released." });
       await refresh();
+    } catch (err) {
+      reportError("Couldn't cancel order", err);
     } finally {
       setCancelingId(null);
     }

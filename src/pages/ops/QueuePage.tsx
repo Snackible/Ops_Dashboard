@@ -30,6 +30,12 @@ function RequestCard({
     try {
       await dataClient.decideRequest(request.requestId, user.name, approve, note || null);
       onDecided();
+    } catch (err) {
+      notificationStore.push({
+        kind: "danger",
+        title: "Couldn't save decision",
+        body: err instanceof Error ? err.message : "Something went wrong.",
+      });
     } finally {
       setBusy(null);
     }

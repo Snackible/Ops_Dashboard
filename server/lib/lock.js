@@ -27,21 +27,26 @@ export async function withLock(spreadsheetId, fn) {
   const token = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
   const deadline = Date.now() + ACQUIRE_TIMEOUT_MS;
 
+  // Row 1 is the header row every managed tab gets on creation ("token",
+  // "acquired_at" as literal text) - the lock state itself lives in row 2,
+  // otherwise the header text reads back as a permanently-held, unparseable
+  // lock (its "acquired_at" is the literal string "acquired_at", which
+  // parses to an invalid date, so the staleness check can never fire).
   while (Date.now() < deadline) {
-    const [current] = await readRange(spreadsheetId, TAB_LOCK, "A1:B1");
+    const [current] = await readRange(spreadsheetId, TAB_LOCK, "A2:B2");
     const [currentToken, acquiredAt] = current || [];
     const isFree = !currentToken || (acquiredAt && Date.now() - new Date(acquiredAt).getTime() > LOCK_STALE_MS);
 
     if (isFree) {
-      await writeRange(spreadsheetId, TAB_LOCK, "A1:B1", [[token, new Date().toISOString()]]);
-      const [confirm] = await readRange(spreadsheetId, TAB_LOCK, "A1:B1");
+      await writeRange(spreadsheetId, TAB_LOCK, "A2:B2", [[token, new Date().toISOString()]]);
+      const [confirm] = await readRange(spreadsheetId, TAB_LOCK, "A2:B2");
       if (confirm && confirm[0] === token) {
         try {
           return await fn();
         } finally {
-          const [stillOurs] = await readRange(spreadsheetId, TAB_LOCK, "A1:B1");
+          const [stillOurs] = await readRange(spreadsheetId, TAB_LOCK, "A2:B2");
           if (stillOurs && stillOurs[0] === token) {
-            await writeRange(spreadsheetId, TAB_LOCK, "A1:B1", [["", ""]]);
+            await writeRange(spreadsheetId, TAB_LOCK, "A2:B2", [["", ""]]);
           }
         }
       }

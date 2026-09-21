@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataClient } from "../../lib/data";
+import { notificationStore } from "../../lib/integrations/notificationStore";
 import { LoadingState } from "../../components/Spinner";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
 import { TierPicker } from "../../components/TierPicker";
@@ -66,19 +67,42 @@ export function InventoryPage() {
     (i) => (category === "All" || i.category === category) && (tierFilter === "all" || i.tier === tierFilter)
   );
 
+  function reportError(title: string, err: unknown) {
+    notificationStore.push({
+      kind: "danger",
+      title,
+      body: err instanceof Error ? err.message : "Something went wrong.",
+    });
+  }
+
   async function handleStockChange(skuId: string, value: number) {
-    await dataClient.updateStock(skuId, Math.max(0, value));
-    refresh();
+    try {
+      await dataClient.updateStock(skuId, Math.max(0, value));
+      refresh();
+    } catch (err) {
+      reportError("Couldn't update stock", err);
+      refresh();
+    }
   }
 
   async function handleActiveToggle(skuId: string, active: boolean) {
-    await dataClient.setActive(skuId, active);
-    refresh();
+    try {
+      await dataClient.setActive(skuId, active);
+      refresh();
+    } catch (err) {
+      reportError("Couldn't update active status", err);
+      refresh();
+    }
   }
 
   async function handleTierChange(skuId: string, tier: Tier) {
-    await dataClient.setTier(skuId, tier);
-    refresh();
+    try {
+      await dataClient.setTier(skuId, tier);
+      refresh();
+    } catch (err) {
+      reportError("Couldn't update tier", err);
+      refresh();
+    }
   }
 
   return (
