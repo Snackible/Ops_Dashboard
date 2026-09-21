@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { useAuth } from "../lib/auth/AuthContext";
@@ -11,6 +11,15 @@ interface PortalShellProps {
 
 export function PortalShell({ brandLabel, navItems, children }: PortalShellProps) {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  function handleSignOut() {
+    signOut();
+    // For B2B, staying on a /b2b route would just auto-sign back in
+    // immediately (see RequireRole) - go to /login so signing out is
+    // actually visible instead of silently reauthenticating.
+    navigate("/login");
+  }
 
   return (
     <div className="min-h-screen bg-paper text-ink">
@@ -45,7 +54,7 @@ export function PortalShell({ brandLabel, navItems, children }: PortalShellProps
             <span className="text-sm text-ink-soft">{user?.name}</span>
             <ThemeToggle />
             <button
-              onClick={signOut}
+              onClick={handleSignOut}
               className="rounded-full border border-line px-3 py-1.5 text-[13px] text-ink-soft transition-colors hover:text-ink hover:border-ink-faint active:scale-[0.97]"
             >
               Sign out
