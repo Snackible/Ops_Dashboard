@@ -211,6 +211,13 @@ function slugify_(text) {
  * ratecardColumns_(). All matching tabs are used - e.g. a "Standard
  * Grammage" tab and a "One Serving Pack" tab both feed Inventory as
  * distinct, independently-stocked rows.
+ *
+ * Each non-managed sheet costs one round trip to Apps Script's Sheets
+ * service no matter what, so this reads each one's whole data range once
+ * (`getDataRange()` in a single call, rather than separate getLastRow /
+ * getLastColumn / header-range calls) and hands the already-fetched values
+ * back to the caller - readRatecardRows_() reuses them instead of reading
+ * the same sheets again.
  */
 function findRatecardSheets_() {
   const managed = Object.keys(COLUMNS);
@@ -219,11 +226,12 @@ function findRatecardSheets_() {
   for (let i = 0; i < sheets.length; i++) {
     const sheet = sheets[i];
     if (managed.indexOf(sheet.getName()) !== -1) continue;
-    if (sheet.getLastRow() === 0 || sheet.getLastColumn() === 0) continue;
-    const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim().toLowerCase());
+    const values = sheet.getDataRange().getValues();
+    if (values.length === 0 || values[0].length === 0) continue;
+    const header = values[0].map(h => String(h).trim().toLowerCase());
     const hasCategory = header.indexOf('category') !== -1;
     const hasProduct = header.some(h => h.indexOf('product') !== -1);
-    if (hasCategory && hasProduct) matches.push(sheet);
+    if (hasCategory && hasProduct) matches.push({ sheet: sheet, values: values });
   }
   if (matches.length === 0) throw new Error('No ratecard tab found. Add a tab with "Category" and "Product Name" header columns.');
   return matches;
@@ -236,13 +244,11 @@ function findHeaderCol_(header, matcher) {
   return -1;
 }
 
-/** Locates every column this app cares about on the ratecard tab by header name, not position. */
-function ratecardColumns_(sheet) {
-  const lastCol = sheet.getLastColumn();
-  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim().toLowerCase());
+/** Locates every column this app cares about by header name, not position - takes an already-fetched header row, no API call of its own. */
+function ratecardColumns_(headerRow) {
+  const header = headerRow.map(h => String(h).trim().toLowerCase());
   const isLarger = h => h.indexOf('larger') !== -1;
   return {
-    lastCol: lastCol,
     catCol: findHeaderCol_(header, h => h === 'category'),
     nameCol: findHeaderCol_(header, h => h.indexOf('product') !== -1),
     gramCol: findHeaderCol_(header, h => h.indexOf('grammage') !== -1 && !isLarger(h)),
@@ -330,18 +336,16 @@ function readOperationalCell_(colIndex, r, kind, fallback) {
  * rather than colliding together.
  */
 function readRatecardRows_() {
-  const sheets = findRatecardSheets_();
+  const matches = findRatecardSheets_();
   const rows = [];
   const seenIds = {};
 
-  sheets.forEach(sheet => {
-    const cols = ratecardColumns_(sheet);
+  matches.forEach(({ sheet, values }) => {
+    const cols = ratecardColumns_(values[0]);
     const missing = ['catCol', 'nameCol', 'gramCol', 'mrpCol', 'shelfCol'].filter(k => cols[k] === -1);
     if (missing.length > 0) {
       throw new Error('Ratecard tab "' + sheet.getName() + '" is missing a header column for: ' + missing.join(', '));
     }
-
-    const values = sheet.getDataRange().getValues();
 
     for (let i = 1; i < values.length; i++) {
       const r = values[i];
