@@ -66,8 +66,11 @@ table or the drag-and-drop board at `/ops/tiers`. B2B sees the same tiers
 - **Data** — defaults to `src/lib/data/mockDataClient.ts` (localStorage) for
   local dev. Production builds automatically use the real backend — see
   **Real backend (Sheets API via Vercel Functions)**.
-- **Sound alert** — a synthesized chime (`src/lib/integrations/soundAlert.ts`),
-  no audio file to ship.
+- **Sound alert** — every toast plays a synthesized chime
+  (`src/lib/integrations/soundAlert.ts`), no audio file to ship. The note
+  sequence differs by toast kind (info/success/danger/warning) so a decline
+  doesn't sound like an approval; `notificationStore.push()` triggers it
+  automatically, so no call site needs to remember to play one.
 
 ## Real backend (Sheets API via Vercel Functions)
 

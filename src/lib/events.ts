@@ -1,4 +1,4 @@
-import type { StockRequest, InventoryItem } from "./types";
+import type { StockRequest, InventoryItem, ProductRequest } from "./types";
 
 /**
  * The names below are the only contract between core domain logic and every
@@ -12,6 +12,8 @@ export interface DomainEvents {
   RequestApproved: { request: StockRequest };
   RequestDeclined: { request: StockRequest };
   InventoryUpdated: { item: InventoryItem };
+  ProductRequestSubmitted: { request: ProductRequest };
+  ProductRequestDecided: { request: ProductRequest };
 }
 
 type EventName = keyof DomainEvents;

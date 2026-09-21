@@ -19,11 +19,15 @@ export function startSheetsPolling(intervalMs = 6000): void {
   started = true;
 
   const lastSeen = new Map<string, RequestStatus>();
+  const lastSeenProductRequests = new Map<string, string>();
   let seeded = false;
 
   const poll = async () => {
     try {
-      const requests = await sheetsDataClient.getRequests();
+      const [requests, productRequests] = await Promise.all([
+        sheetsDataClient.getRequests(),
+        sheetsDataClient.getProductRequests(),
+      ]);
 
       for (const request of requests) {
         const previous = lastSeen.get(request.requestId);
@@ -33,6 +37,15 @@ export function startSheetsPolling(intervalMs = 6000): void {
         if (request.status === "pending") eventBus.emit("RequestSubmitted", { request });
         if (request.status === "approved") eventBus.emit("RequestApproved", { request });
         if (request.status === "declined") eventBus.emit("RequestDeclined", { request });
+      }
+
+      for (const request of productRequests) {
+        const previous = lastSeenProductRequests.get(request.requestId);
+        lastSeenProductRequests.set(request.requestId, request.status);
+        if (!seeded || previous === request.status) continue;
+
+        if (request.status === "pending") eventBus.emit("ProductRequestSubmitted", { request });
+        else eventBus.emit("ProductRequestDecided", { request });
       }
 
       seeded = true;

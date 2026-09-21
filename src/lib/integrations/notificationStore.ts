@@ -1,4 +1,6 @@
-export type ToastKind = "info" | "success" | "danger";
+import { playChime } from "./soundAlert";
+
+export type ToastKind = "info" | "success" | "danger" | "warning";
 
 export interface Toast {
   id: string;
@@ -23,6 +25,7 @@ class NotificationStore {
     const withId: Toast = { ...toast, id: `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` };
     this.toasts = [...this.toasts, withId];
     this.emit();
+    playChime(toast.kind);
     setTimeout(() => this.dismiss(withId.id), 6000);
   }
 

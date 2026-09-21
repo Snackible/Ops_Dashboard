@@ -5,6 +5,7 @@ const KIND_STYLES: Record<Toast["kind"], string> = {
   info: "border-line bg-paper-raised text-ink",
   success: "border-success bg-success-soft text-success",
   danger: "border-danger bg-danger-soft text-danger",
+  warning: "border-warning bg-warning-soft text-warning",
 };
 
 export function ToastHost() {

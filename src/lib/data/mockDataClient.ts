@@ -241,6 +241,7 @@ export const mockDataClient: DataClient = {
     };
     db.productRequests.unshift(request);
     saveDB(db);
+    eventBus.emit("ProductRequestSubmitted", { request });
     return tick(request);
   },
 
@@ -265,6 +266,7 @@ export const mockDataClient: DataClient = {
       }
     }
     saveDB(db);
+    for (const r of decided) eventBus.emit("ProductRequestDecided", { request: r });
     return tick(decided);
   },
 };
