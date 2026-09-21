@@ -103,19 +103,32 @@ its own `Larger Pack Current Stock` / `Larger Pack Active` / `Larger Pack
 Tier` columns (created lazily the same way). Rows where those two columns
 are blank or "NA" just produce the one standard-size SKU.
 
+**Accounts/Orders/OrderLines/FulfillmentLog/ProductRequests live in a
+separate spreadsheet from the ratecard**, on purpose — customer contact
+info and order history shouldn't sit in whatever sheet the ratecard is
+shared through, which may be visible to a much wider group (pricing,
+other teams) than who should see customer data. Share that second
+spreadsheet only with whoever actually needs it.
+
 **Setup:**
 
 1. Open the spreadsheet that already has your ratecard tab → Extensions →
    Apps Script.
 2. Paste in `apps-script/Code.gs`.
-3. Run `setupSheets()` once. It only adds the operational tabs —
-   `Accounts`, `Orders`, `OrderLines`, `FulfillmentLog` — and seeds two
-   demo `Accounts` rows. It does not touch the ratecard tab.
-4. (Optional) Project Settings → Script Properties → add `API_TOKEN` if you
-   want a shared secret, not just an unguessable URL, gating the endpoint.
-5. Deploy → New deployment → Web app → Execute as **Me**, Who has access
+3. Create a **new, separate** spreadsheet for accounts/orders — share it
+   only with whoever should see customer data. Copy its ID out of the URL
+   (`docs.google.com/spreadsheets/d/THIS_PART/edit`).
+4. Project Settings → Script Properties → add `OPERATIONAL_SPREADSHEET_ID`
+   with that ID. Without this, operational tabs fall back to living in the
+   ratecard spreadsheet — fine for a quick test, not for real customer data.
+5. Run `setupSheets()` once (optional) to seed two demo `Accounts` rows —
+   the tabs themselves create automatically on first use either way. It
+   never touches the ratecard tab.
+6. (Optional) Also add `API_TOKEN` if you want a shared secret, not just an
+   unguessable URL, gating the endpoint.
+7. Deploy → New deployment → Web app → Execute as **Me**, Who has access
    **Anyone**. Copy the `/exec` URL.
-6. Copy `.env.example` to `.env.local`, set `VITE_SHEETS_API_URL` (and
+8. Copy `.env.example` to `.env.local`, set `VITE_SHEETS_API_URL` (and
    `VITE_SHEETS_API_TOKEN` if you set one), restart `npm run dev`.
 
 **Why this is safe under concurrent orders**: Sheets has no transactions, so

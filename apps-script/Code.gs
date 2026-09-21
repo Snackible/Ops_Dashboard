@@ -2,14 +2,14 @@
  * Snackible Ops Dashboard - Google Sheets backend.
  *
  * This file is the whole backend. It runs as an Apps Script Web App bound to
- * one spreadsheet, and that spreadsheet IS the database.
+ * one spreadsheet (the ratecard one), but that's only where Inventory lives.
  *
  * Inventory has no tab of its own - it reads and writes directly against
- * every existing tab that looks like a ratecard (a "Category" + "Product
- * Name" header pair), the same tabs you already price products in - e.g. a
- * "Standard Grammage" tab and a "One Serving Pack" tab both contribute rows,
- * kept as distinct SKUs. Nothing is copied out of them. Three extra columns
- * get added to each tab the first time they're needed:
+ * every existing tab IN THE BOUND SPREADSHEET that looks like a ratecard (a
+ * "Category" + "Product Name" header pair) - e.g. a "Standard Grammage" tab
+ * and a "One Serving Pack" tab both contribute rows, kept as distinct SKUs.
+ * Nothing is copied out of them. Three extra columns get added to each tab
+ * the first time they're needed:
  *   - Current Stock - absent (or blank on a row) means 0. Ops can type real
  *     counts into this column by hand, or the app fills it in the moment
  *     someone commits an order, toggles active, or re-tiers something.
@@ -17,6 +17,13 @@
  *   - Tier          - absent or blank means "yellow".
  * If you'd rather name the stock column yourself, "Inventory" or "Stock"
  * are recognized too - see ratecardColumns_() below.
+ *
+ * Accounts / Orders / OrderLines / FulfillmentLog / ProductRequests live in
+ * a SEPARATE spreadsheet (see operationalSpreadsheet_() below) - company
+ * contact info and order history have no business sitting in whatever
+ * spreadsheet the ratecard lives in, which may be shared far more broadly
+ * (pricing, other teams, etc.) than who should see customer data. Share
+ * that second spreadsheet only with whoever actually needs it.
  *
  * Why Apps Script rather than calling the Sheets API from the browser:
  *   - The browser never holds a credential. The script runs as the sheet's
@@ -32,12 +39,15 @@
  *      in row 1 - Grammage/MRP/Shelf Life columns can be named and ordered
  *      however your sheet already has them) > Extensions > Apps Script.
  *   2. Paste this file into the editor.
- *   3. (Optional) Project Settings > Script Properties > add API_TOKEN.
- *   4. Deploy > New deployment > Web app > Execute as: Me,
+ *   3. Create a NEW, separate spreadsheet for accounts/orders - share it
+ *      only with whoever should see customer data. Copy its ID out of the
+ *      URL (docs.google.com/spreadsheets/d/THIS_PART/edit).
+ *   4. Project Settings > Script Properties > add OPERATIONAL_SPREADSHEET_ID
+ *      with that ID. (Optional) also add API_TOKEN.
+ *   5. Deploy > New deployment > Web app > Execute as: Me,
  *      Who has access: Anyone. Copy the /exec URL into VITE_SHEETS_API_URL.
- * The operational tabs - Accounts, Orders, OrderLines, FulfillmentLog,
- * ProductRequests - create themselves (via sheet_() below) the first time
- * anything reads or writes them, so there's no manual setup step for them.
+ * The operational tabs create themselves (via sheet_() below) the first
+ * time anything reads or writes them, so there's no manual tab-setup step.
  * Running setupSheets() is still fine and seeds two demo Accounts rows if
  * you want a company to sign in as right away.
  */
@@ -142,9 +152,23 @@ function withLock_(fn) {
 
 // ── Managed-tab helpers (Accounts / Orders / OrderLines / FulfillmentLog) ──
 
+/**
+ * The spreadsheet that holds Accounts/Orders/OrderLines/FulfillmentLog/
+ * ProductRequests - a separate spreadsheet from the ratecard one, identified
+ * by the OPERATIONAL_SPREADSHEET_ID script property, so customer contact
+ * info and order history aren't sitting in whatever sheet the ratecard is
+ * shared through. Falls back to the bound spreadsheet if that property
+ * isn't set, so this doesn't hard-break setups that haven't configured it
+ * yet - but you should set it before handling real customer data.
+ */
+function operationalSpreadsheet_() {
+  const id = PropertiesService.getScriptProperties().getProperty('OPERATIONAL_SPREADSHEET_ID');
+  return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+}
+
 /** Creates a managed tab with its header row the first time anything touches it - setupSheets() is a convenience, not a requirement. */
 function sheet_(name) {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const spreadsheet = operationalSpreadsheet_();
   let sheet = spreadsheet.getSheetByName(name);
   if (!sheet) {
     sheet = spreadsheet.insertSheet(name);
@@ -698,9 +722,15 @@ function decideProductRequests_(skuId, decidedBy, status, holdUntil) {
 
 // ── One-time setup ──────────────────────────────────────────────────────
 
-/** Creates any missing operational tabs and writes their headers. Never touches the ratecard tab. */
+/**
+ * Creates any missing operational tabs and writes their headers, in the
+ * operational spreadsheet (see operationalSpreadsheet_() - set
+ * OPERATIONAL_SPREADSHEET_ID first if you want them separated from the
+ * ratecard spreadsheet this script is bound to). Never touches the ratecard
+ * tab itself.
+ */
 function setupSheets() {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const spreadsheet = operationalSpreadsheet_();
 
   Object.keys(COLUMNS).forEach(name => {
     let sheet = spreadsheet.getSheetByName(name);
@@ -719,7 +749,7 @@ function setupSheets() {
 
   try {
     const ratecards = findRatecardSheets_();
-    Logger.log('Using as Inventory: ' + ratecards.map(s => s.getName()).join(', '));
+    Logger.log('Using as Inventory: ' + ratecards.map(m => m.sheet.getName()).join(', '));
   } catch (err) {
     Logger.log('Warning: ' + err.message + ' getInventory will fail until one exists.');
   }

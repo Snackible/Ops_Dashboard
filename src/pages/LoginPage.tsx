@@ -11,6 +11,7 @@ export function LoginPage() {
   const [accountId, setAccountId] = useState("");
   const [name, setName] = useState("");
   const [accountsError, setAccountsError] = useState<string | null>(null);
+  const [accountsLoading, setAccountsLoading] = useState(true);
   const { signIn } = useAuth();
   const navigate = useNavigate();
 
@@ -23,7 +24,8 @@ export function LoginPage() {
       })
       .catch((err) => {
         setAccountsError(err instanceof Error ? err.message : "Could not load accounts");
-      });
+      })
+      .finally(() => setAccountsLoading(false));
   }, []);
 
   function handleSubmit(e: React.FormEvent) {
@@ -81,11 +83,14 @@ export function LoginPage() {
                   </option>
                 ))}
               </select>
-              {accountsError && (
+              {accountsLoading && <p className="mt-1.5 text-[12px] text-ink-faint">Loading accounts…</p>}
+              {!accountsLoading && accountsError && (
                 <p className="mt-1.5 text-[12px] text-red-400">Couldn't load accounts: {accountsError}</p>
               )}
-              {!accountsError && accounts.length === 0 && (
-                <p className="mt-1.5 text-[12px] text-ink-faint">Loading accounts…</p>
+              {!accountsLoading && !accountsError && accounts.length === 0 && (
+                <p className="mt-1.5 text-[12px] text-ink-faint">
+                  No accounts set up yet — Continue still works, it'll drop you into a test session.
+                </p>
               )}
             </label>
           ) : (
@@ -102,7 +107,6 @@ export function LoginPage() {
 
           <button
             type="submit"
-            disabled={role === "b2b" && accounts.length === 0}
             className="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
           >
             Continue
