@@ -32,10 +32,10 @@ function CatalogRow({
         ? { label: `${item.currentStock} left`, cls: "bg-warning/10 text-warning border-warning/30" }
         : { label: `${item.currentStock} in stock`, cls: "bg-success/10 text-success border-success/30" };
   return (
-    <div className={`flex items-center gap-3 rounded-md border border-l-[3px] border-line bg-paper-raised px-3 py-1.5 ${c.borderSolid}`}>
+    <div className={`flex items-center gap-3 rounded-md border border-l-[3px] border-line bg-paper-raised px-3.5 py-2.5 ${c.borderSolid}`}>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-          <p className="truncate text-[13px] font-medium leading-tight">
+          <p className="truncate text-[13.5px] font-medium leading-tight">
             {item.productName}
             {isLargerPack(item.skuId) && <span className="ml-1 font-semibold text-accent-ink" title="Larger Pack">(L)</span>}
           </p>
@@ -50,11 +50,11 @@ function CatalogRow({
         </p>
         {overStock && <p className="mt-0.5 text-[10.5px] text-warning">Not enough in stock — this will be sent to Ops as a request.</p>}
       </div>
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1.5">
         <button
           onClick={() => onChange(qty - 1)}
           disabled={qty <= 0}
-          className="h-6 w-6 rounded border border-line text-ink-soft transition-colors hover:border-ink-faint hover:text-ink hover:bg-paper active:scale-95 disabled:opacity-40"
+          className="h-7 w-7 rounded border border-line text-ink-soft transition-colors hover:border-ink-faint hover:text-ink hover:bg-paper active:scale-95 disabled:opacity-40"
           aria-label={`Decrease quantity for ${item.productName}`}
         >
           −
@@ -64,13 +64,13 @@ function CatalogRow({
           min={0}
           value={qty}
           onChange={(e) => onChange(Number(e.target.value))}
-          className={`w-12 rounded border bg-paper px-1 py-0.5 text-center text-[12.5px] tabular-nums transition-colors focus:outline-none focus:ring-2 focus:ring-accent ${
-            overStock ? "border-warning" : "border-line"
+          className={`w-14 rounded-md border-2 bg-paper px-1 py-1 text-center font-mono text-[13px] font-bold tabular-nums text-ink transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 ${
+            overStock ? "border-warning focus:border-warning" : "border-accent/40 focus:border-accent"
           }`}
         />
         <button
           onClick={() => onChange(qty + 1)}
-          className="h-6 w-6 rounded border border-line text-ink-soft transition-colors hover:border-ink-faint hover:text-ink hover:bg-paper active:scale-95 disabled:opacity-40"
+          className="h-7 w-7 rounded border border-line text-ink-soft transition-colors hover:border-ink-faint hover:text-ink hover:bg-paper active:scale-95 disabled:opacity-40"
           aria-label={`Increase quantity for ${item.productName}`}
         >
           +
@@ -324,7 +324,7 @@ export function CatalogPage() {
                     </span>
                   </div>
                 )}
-                <div className="space-y-1">
+                <div className="grid grid-cols-1 items-start gap-2 lg:grid-cols-2 xl:grid-cols-3">
                   {tierItems.map((item) => (
                     <CatalogRow
                       key={item.skuId}
