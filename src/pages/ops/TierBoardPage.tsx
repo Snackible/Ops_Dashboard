@@ -4,6 +4,7 @@ import { liveStore, useLiveStore } from "../../lib/data/liveStore";
 import { RefreshButton } from "../../components/RefreshButton";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
 import { SkeletonCard } from "../../components/Skeleton";
+import { isLargerPack } from "../../lib/inventory";
 import type { InventoryItem, Tier } from "../../lib/types";
 
 function TierColumn({
@@ -59,9 +60,12 @@ function TierColumn({
               draggedSku === item.skuId ? "opacity-40" : "opacity-100"
             }`}
           >
-            <p className="text-[12.5px] font-medium leading-tight">{item.productName}</p>
+            <p className="text-[12.5px] font-medium leading-tight">
+              {item.productName}
+              {isLargerPack(item.skuId) && <span className="ml-1 font-semibold text-accent-ink" title="Larger Pack">(L)</span>}
+            </p>
             <p className="mt-0.5 font-mono text-[10.5px] tabular-nums text-ink-faint">
-              {item.category} · stock {item.currentStock}
+              {item.category} · {item.grammageG}g · stock {item.currentStock}
             </p>
           </div>
         ))}
@@ -105,9 +109,7 @@ export function TierBoardPage() {
             <h1 className="font-display text-2xl font-semibold">Tiers</h1>
             <RefreshButton onRefresh={liveStore.refreshInventory} />
           </div>
-          <p className="text-sm text-ink-soft">
-            Drag a product between columns to re-file it. Purely manual — nothing here is computed from stock counts.
-          </p>
+          <p className="text-sm text-ink-soft">Drag a product between columns to re-file it.</p>
         </div>
         <select
           value={category}

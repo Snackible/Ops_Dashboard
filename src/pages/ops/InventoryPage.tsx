@@ -5,8 +5,9 @@ import { notificationStore } from "../../lib/integrations/notificationStore";
 import { LoadingState } from "../../components/Spinner";
 import { RefreshButton } from "../../components/RefreshButton";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
+import { isLargerPack } from "../../lib/inventory";
 import { TierPicker } from "../../components/TierPicker";
-import type { Tier } from "../../lib/types";
+import type { InventoryItem, Tier } from "../../lib/types";
 
 type TierFilter = "all" | Tier;
 
@@ -43,8 +44,42 @@ function StockInput({ value, onCommit }: { value: number; onCommit: (next: numbe
       onKeyDown={(e) => {
         if (e.key === "Enter") (e.target as HTMLInputElement).blur();
       }}
-      className="w-20 rounded-md border border-line bg-paper px-2 py-1 text-center font-mono tabular-nums transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+      className="w-14 shrink-0 rounded-md border border-line bg-paper px-1.5 py-1 text-center font-mono text-[13px] tabular-nums transition-colors focus:outline-none focus:ring-2 focus:ring-accent sm:w-20 sm:px-2"
     />
+  );
+}
+
+function InventoryRow({
+  item,
+  onStockChange,
+  onActiveToggle,
+  onTierChange,
+}: {
+  item: InventoryItem;
+  onStockChange: (skuId: string, value: number) => void;
+  onActiveToggle: (skuId: string, active: boolean) => void;
+  onTierChange: (skuId: string, tier: Tier) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 transition-colors hover:bg-paper-raised">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[12.5px] leading-tight">
+          {item.productName}
+          {isLargerPack(item.skuId) && <span className="ml-1 font-semibold text-accent-ink">(L)</span>}
+        </p>
+        <p className="font-mono text-[10px] tabular-nums text-ink-faint">
+          {item.grammageG}g · ₹{item.mrpInr}
+        </p>
+      </div>
+      <TierPicker value={item.tier} onChange={(tier) => onTierChange(item.skuId, tier)} />
+      <StockInput value={item.currentStock} onCommit={(next) => onStockChange(item.skuId, next)} />
+      <input
+        type="checkbox"
+        checked={item.active}
+        onChange={(e) => onActiveToggle(item.skuId, e.target.checked)}
+        className="h-4 w-4 shrink-0 accent-accent"
+      />
+    </div>
   );
 }
 
@@ -61,6 +96,20 @@ export function InventoryPage() {
   const filtered = items.filter(
     (i) => (category === "All" || i.category === category) && (tierFilter === "all" || i.tier === tierFilter)
   );
+
+  // Grouped by category so a long list can be scanned/worked category by
+  // category instead of one flat block - the dropdown above still narrows
+  // to a single category for focused counting on a small screen.
+  const groups = useMemo(() => {
+    const byCategory = new Map<string, InventoryItem[]>();
+    for (const item of filtered) {
+      const list = byCategory.get(item.category) ?? [];
+      list.push(item);
+      byCategory.set(item.category, list);
+    }
+    return Array.from(byCategory.entries());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered]);
 
   function reportError(title: string, err: unknown) {
     notificationStore.push({
@@ -102,7 +151,7 @@ export function InventoryPage() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="font-display text-2xl font-semibold">Inventory</h1>
@@ -151,43 +200,25 @@ export function InventoryPage() {
       {loading ? (
         <LoadingState label="Loading inventory…" />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-line">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-line bg-paper-raised text-left font-mono text-[11px] uppercase tracking-wide text-ink-soft">
-                <th className="px-4 py-2.5">Product</th>
-                <th className="px-4 py-2.5">Tier</th>
-                <th className="px-4 py-2.5">MRP</th>
-                <th className="px-4 py-2.5">Stock</th>
-                <th className="px-4 py-2.5">Active</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((item) => (
-                <tr key={item.skuId} className="border-b border-line transition-colors last:border-0 hover:bg-paper-raised">
-                  <td className="px-4 py-2.5">
-                    <p>{item.productName}</p>
-                    <p className="font-mono text-[11px] text-ink-faint">{item.category}</p>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <TierPicker value={item.tier} onChange={(tier) => handleTierChange(item.skuId, tier)} />
-                  </td>
-                  <td className="px-4 py-2.5 font-mono tabular-nums">₹{item.mrpInr}</td>
-                  <td className="px-4 py-2.5">
-                    <StockInput value={item.currentStock} onCommit={(next) => handleStockChange(item.skuId, next)} />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <input
-                      type="checkbox"
-                      checked={item.active}
-                      onChange={(e) => handleActiveToggle(item.skuId, e.target.checked)}
-                      className="h-4 w-4 accent-accent"
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-4 pb-4">
+          {groups.map(([cat, catItems]) => (
+            <div key={cat}>
+              <div className="sticky top-0 z-10 -mx-1 mb-1 bg-paper px-1 py-1 font-mono text-[10px] uppercase tracking-wide text-ink-faint">
+                {cat} · {catItems.length}
+              </div>
+              <div className="divide-y divide-line rounded-lg border border-line">
+                {catItems.map((item) => (
+                  <InventoryRow
+                    key={item.skuId}
+                    item={item}
+                    onStockChange={handleStockChange}
+                    onActiveToggle={handleActiveToggle}
+                    onTierChange={handleTierChange}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
