@@ -160,10 +160,21 @@ function withLock_(fn) {
  * shared through. Falls back to the bound spreadsheet if that property
  * isn't set, so this doesn't hard-break setups that haven't configured it
  * yet - but you should set it before handling real customer data.
+ *
+ * Cached at the module level: `SpreadsheetApp.openById()` and the
+ * PropertiesService round trip are both real costs, and most actions touch
+ * more than one managed tab in a single request (e.g. getRequests_ reads
+ * both Orders and OrderLines) - without this, each one re-opened the
+ * spreadsheet from scratch. A global var is safe here because it only lives
+ * for the duration of one execution; Apps Script starts fresh per request.
  */
+var operationalSpreadsheetCache_ = null;
 function operationalSpreadsheet_() {
-  const id = PropertiesService.getScriptProperties().getProperty('OPERATIONAL_SPREADSHEET_ID');
-  return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+  if (!operationalSpreadsheetCache_) {
+    const id = PropertiesService.getScriptProperties().getProperty('OPERATIONAL_SPREADSHEET_ID');
+    operationalSpreadsheetCache_ = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+  }
+  return operationalSpreadsheetCache_;
 }
 
 /** Creates a managed tab with its header row the first time anything touches it - setupSheets() is a convenience, not a requirement. */
