@@ -10,14 +10,20 @@ export function LoginPage() {
   const [accounts, setAccounts] = useState<B2BAccount[]>([]);
   const [accountId, setAccountId] = useState("");
   const [name, setName] = useState("");
+  const [accountsError, setAccountsError] = useState<string | null>(null);
   const { signIn } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    dataClient.getAccounts().then((list) => {
-      setAccounts(list);
-      setAccountId(list[0]?.accountId ?? "");
-    });
+    dataClient
+      .getAccounts()
+      .then((list) => {
+        setAccounts(list);
+        setAccountId(list[0]?.accountId ?? "");
+      })
+      .catch((err) => {
+        setAccountsError(err instanceof Error ? err.message : "Could not load accounts");
+      });
   }, []);
 
   function handleSubmit(e: React.FormEvent) {
@@ -66,7 +72,8 @@ export function LoginPage() {
               <select
                 value={accountId}
                 onChange={(e) => setAccountId(e.target.value)}
-                className="mt-1 w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+                disabled={accounts.length === 0}
+                className="mt-1 w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink transition-colors focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
               >
                 {accounts.map((a) => (
                   <option key={a.accountId} value={a.accountId}>
@@ -74,6 +81,14 @@ export function LoginPage() {
                   </option>
                 ))}
               </select>
+              {accountsError && (
+                <p className="mt-1.5 text-[12px] text-red-400">
+                  Couldn't load accounts: {accountsError}
+                </p>
+              )}
+              {!accountsError && accounts.length === 0 && (
+                <p className="mt-1.5 text-[12px] text-ink-faint">Loading accounts…</p>
+              )}
             </label>
           ) : (
             <label className="block">
@@ -89,7 +104,8 @@ export function LoginPage() {
 
           <button
             type="submit"
-            className="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.98]"
+            disabled={role === "b2b" && accounts.length === 0}
+            className="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
           >
             Continue
           </button>
