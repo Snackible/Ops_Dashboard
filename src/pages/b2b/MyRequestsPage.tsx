@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { dataClient } from "../../lib/data";
 import { useAuth } from "../../lib/auth/AuthContext";
+import { eventBus } from "../../lib/events";
 import { StatusPill } from "../../components/StatusPill";
 import { SkeletonRow } from "../../components/Skeleton";
 import { EmptyState } from "../../components/EmptyState";
+import { RefreshButton } from "../../components/RefreshButton";
 import type { InventoryItem, ProductRequest, ProductRequestStatus, StockRequest } from "../../lib/types";
 
 const PRODUCT_REQUEST_STATUS_CONFIG: Record<ProductRequestStatus, { label: string; classes: string }> = {
@@ -20,12 +22,16 @@ export function MyRequestsPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // No polling of our own here - the global sheets poller (sheetsPolling.ts)
+  // already fetches both requests and product requests on its own intervals,
+  // so re-polling independently would just double the read cost. Instead we
+  // react to the events that poller (or the mock client, synchronously)
+  // emits on transitions this account cares about, plus a manual refresh.
   async function refresh() {
     if (!user?.accountId) return;
-    const [reqs, preqs, inv] = await Promise.all([
+    const [reqs, preqs] = await Promise.all([
       dataClient.getRequestsForAccount(user.accountId),
       dataClient.getProductRequestsForAccount(user.accountId),
-      dataClient.getInventory(),
     ]);
     setRequests(
       reqs
@@ -33,14 +39,19 @@ export function MyRequestsPage() {
         .sort((a, b) => (b.submittedAt ?? "").localeCompare(a.submittedAt ?? ""))
     );
     setProductRequests(preqs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-    setInventory(inv);
     setLoading(false);
   }
 
   useEffect(() => {
+    if (!user?.accountId) return;
+    dataClient.getInventory().then(setInventory);
     refresh();
-    const interval = setInterval(refresh, 4000);
-    return () => clearInterval(interval);
+    const unsubs = [
+      eventBus.on("RequestApproved", refresh),
+      eventBus.on("RequestDeclined", refresh),
+      eventBus.on("ProductRequestDecided", refresh),
+    ];
+    return () => unsubs.forEach((unsub) => unsub());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.accountId]);
 
@@ -48,7 +59,10 @@ export function MyRequestsPage() {
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold">My Requests</h1>
+      <div className="mb-1 flex items-center gap-2">
+        <h1 className="font-display text-2xl font-semibold">My Requests</h1>
+        <RefreshButton onRefresh={refresh} />
+      </div>
       <p className="mb-6 text-sm text-ink-soft">Orders you've pushed to Ops. Build one from New Order, push from Committed.</p>
 
       {loading && (

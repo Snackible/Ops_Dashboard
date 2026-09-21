@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataClient } from "../../lib/data";
 import { useAuth } from "../../lib/auth/AuthContext";
+import { eventBus } from "../../lib/events";
 import { notificationStore } from "../../lib/integrations/notificationStore";
 import { SkeletonRow } from "../../components/Skeleton";
 import { EmptyState } from "../../components/EmptyState";
+import { RefreshButton } from "../../components/RefreshButton";
 import type { B2BAccount, InventoryItem, StockRequest } from "../../lib/types";
 
 function RequestCard({
@@ -100,22 +102,34 @@ export function QueuePage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // No polling of our own here - the global sheets poller (sheetsPolling.ts)
+  // already fetches requests on an interval to drive the ops chime, so
+  // re-polling independently would just double the read cost for the same
+  // data. Instead we react to the events that poller (or the mock client,
+  // synchronously) emits on exactly the transitions this page cares about,
+  // plus a manual refresh for "I want it right now".
   async function refresh() {
-    const [reqs, accts, inv] = await Promise.all([
-      dataClient.getRequests(),
-      dataClient.getAccounts(),
-      dataClient.getInventory(),
-    ]);
+    const reqs = await dataClient.getRequests();
     setRequests(reqs);
-    setAccounts(accts);
-    setInventory(inv);
     setLoading(false);
   }
 
+  async function refreshAll() {
+    const [accts, inv] = await Promise.all([dataClient.getAccounts(), dataClient.getInventory()]);
+    setAccounts(accts);
+    setInventory(inv);
+    await refresh();
+  }
+
   useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 4000);
-    return () => clearInterval(interval);
+    refreshAll();
+    const unsubs = [
+      eventBus.on("RequestSubmitted", refresh),
+      eventBus.on("RequestApproved", refresh),
+      eventBus.on("RequestDeclined", refresh),
+    ];
+    return () => unsubs.forEach((unsub) => unsub());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pending = useMemo(
@@ -127,7 +141,10 @@ export function QueuePage() {
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold">Requests queue</h1>
+      <div className="mb-1 flex items-center gap-2">
+        <h1 className="font-display text-2xl font-semibold">Requests queue</h1>
+        <RefreshButton onRefresh={refreshAll} />
+      </div>
       <p className="mb-6 text-sm text-ink-soft">
         {loading
           ? "Loading…"

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataClient } from "../../lib/data";
 import { useAuth } from "../../lib/auth/AuthContext";
+import { eventBus } from "../../lib/events";
 import { notificationStore } from "../../lib/integrations/notificationStore";
 import { LoadingState } from "../../components/Spinner";
 import { EmptyState } from "../../components/EmptyState";
+import { RefreshButton } from "../../components/RefreshButton";
 import type { B2BAccount, InventoryItem, ProductRequest, ProductRequestStatus } from "../../lib/types";
 
 const DECIDED_CONFIG: Record<Exclude<ProductRequestStatus, "pending">, { label: string; classes: string }> = {
@@ -114,22 +116,32 @@ export function ProductRequestsPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // No polling of our own here - the global sheets poller (sheetsPolling.ts)
+  // already fetches product requests on its own (slower) interval to drive
+  // the ops alert, so re-polling independently would just double the read
+  // cost. Instead we react to the events that poller (or the mock client,
+  // synchronously) emits, plus a manual refresh for "I want it right now".
   async function refresh() {
-    const [reqs, accts, inv] = await Promise.all([
-      dataClient.getProductRequests(),
-      dataClient.getAccounts(),
-      dataClient.getInventory(),
-    ]);
+    const reqs = await dataClient.getProductRequests();
     setRequests(reqs);
-    setAccounts(accts);
-    setInventory(inv);
     setLoading(false);
   }
 
+  async function refreshAll() {
+    const [accts, inv] = await Promise.all([dataClient.getAccounts(), dataClient.getInventory()]);
+    setAccounts(accts);
+    setInventory(inv);
+    await refresh();
+  }
+
   useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 4000);
-    return () => clearInterval(interval);
+    refreshAll();
+    const unsubs = [
+      eventBus.on("ProductRequestSubmitted", refresh),
+      eventBus.on("ProductRequestDecided", refresh),
+    ];
+    return () => unsubs.forEach((unsub) => unsub());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const accountsById = new Map(accounts.map((a) => [a.accountId, a]));
@@ -162,7 +174,10 @@ export function ProductRequestsPage() {
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold">Product Requests</h1>
+      <div className="mb-1 flex items-center gap-2">
+        <h1 className="font-display text-2xl font-semibold">Product Requests</h1>
+        <RefreshButton onRefresh={refreshAll} />
+      </div>
       <p className="mb-6 text-sm text-ink-soft">
         {loading
           ? "Loading…"

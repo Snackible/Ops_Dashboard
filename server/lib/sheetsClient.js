@@ -10,13 +10,28 @@ function wholeSheetRange(name) {
   return `${quoteSheetName(name)}!A1:ZZ5000`;
 }
 
-/** Every tab's metadata (title + numeric sheetId, needed for structural edits like deleteDimension) - one call per spreadsheet. */
+// Tab lists are essentially append-only (tabs get created, never renamed or
+// removed by this app), so caching them for the life of a warm serverless
+// instance cuts every managed-tab read and every getInventory call from two
+// raw Sheets API reads down to one - this is what was blowing through the
+// per-minute read quota under completely normal polling. The 5-minute TTL
+// just bounds how long a human manually adding a new ratecard tab takes to
+// show up; a cold start always sees a fresh list regardless.
+const LIST_SHEETS_TTL_MS = 5 * 60 * 1000;
+const listSheetsCache = new Map();
+
+/** Every tab's metadata (title + numeric sheetId, needed for structural edits like deleteDimension) - cached, see above. */
 export async function listSheets(spreadsheetId) {
+  const cached = listSheetsCache.get(spreadsheetId);
+  if (cached && cached.expiresAt > Date.now()) return cached.sheets;
+
   const res = await sheetsApi().spreadsheets.get({
     spreadsheetId,
     fields: "sheets(properties(sheetId,title))",
   });
-  return (res.data.sheets || []).map((s) => ({ sheetId: s.properties.sheetId, title: s.properties.title }));
+  const sheets = (res.data.sheets || []).map((s) => ({ sheetId: s.properties.sheetId, title: s.properties.title }));
+  listSheetsCache.set(spreadsheetId, { sheets, expiresAt: Date.now() + LIST_SHEETS_TTL_MS });
+  return sheets;
 }
 
 /**
@@ -81,6 +96,8 @@ export async function createSheetWithHeader(spreadsheetId, title, headers) {
     requestBody: { requests: [{ addSheet: { properties: { title } } }] },
   });
   const sheetId = addRes.data.replies[0].addSheet.properties.sheetId;
+  const cached = listSheetsCache.get(spreadsheetId);
+  if (cached) cached.sheets = [...cached.sheets, { sheetId, title }];
   await writeRange(spreadsheetId, title, `A1:${colLetter(headers.length)}1`, [headers]);
   await sheetsApi().spreadsheets.batchUpdate({
     spreadsheetId,

@@ -168,12 +168,25 @@ current stock *before* writing anything, so an order either reserves in
 full or not at all.
 
 **Live updates without a change feed**: Sheets has no realtime subscription
-API, so `sheetsPolling.ts` polls `getRequests` every few seconds and diffs
-statuses against what it saw last time, emitting the same `RequestSubmitted`
-/ `RequestApproved` / `RequestDeclined` events onto the event bus that
-`opsPopupSound.ts` and `b2bPopup.ts` already listen for — an Ops tab still
-hears about a push made from a completely different browser, just on a
-poll cycle instead of instantly.
+API, so `sheetsPolling.ts` is the one place that polls - `getRequests` (the
+Ops queue) on a fast interval and `getProductRequests` on a much slower one,
+since the queue is the actual "did a B2B account just push" workflow and
+product-request decisions aren't as time-sensitive. It diffs each poll
+against what it saw last time and emits `RequestSubmitted` / `RequestApproved`
+/ `RequestDeclined` / `ProductRequestSubmitted` / `ProductRequestDecided` onto
+the event bus. Every page that shows this data (`QueuePage`,
+`ProductRequestsPage`, `MyRequestsPage`, on top of `opsPopupSound.ts` and
+`b2bPopup.ts`) subscribes to those events to refresh itself instead of
+running its own polling timer - Google Sheets' free-tier read quota is per
+minute *per service account*, shared across every open tab of the whole app,
+so one poller with two well-separated cadences is what keeps normal usage
+(a handful of concurrent Ops/B2B tabs) comfortably under it; several
+independent per-page timers is what exhausted it before. `listSheets()`
+(`server/lib/sheetsClient.js`) also caches each spreadsheet's tab list for a
+few minutes, since tabs are effectively append-only - that alone halves the
+raw read cost of nearly every action. A `RefreshButton` on each of these
+pages (plus Inventory and New Order) covers "I want it right now" instead of
+waiting out an interval.
 
 **Fulfillment log**: written server-side, inside the same `decideRequest`
 call that approves an order — not as a separate step that could be skipped

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { dataClient } from "../../lib/data";
 import { notificationStore } from "../../lib/integrations/notificationStore";
 import { LoadingState } from "../../components/Spinner";
+import { RefreshButton } from "../../components/RefreshButton";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
 import { TierPicker } from "../../components/TierPicker";
 import type { InventoryItem, Tier } from "../../lib/types";
@@ -109,7 +110,10 @@ export function InventoryPage() {
     <div>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-semibold">Inventory</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display text-2xl font-semibold">Inventory</h1>
+            <RefreshButton onRefresh={refresh} />
+          </div>
           <p className="text-sm text-ink-soft">
             {loading ? "Loading…" : `${items.length} SKUs from the ratecard. Stock starts at 0 until counted.`}
           </p>

@@ -5,6 +5,7 @@ import { useAuth } from "../../lib/auth/AuthContext";
 import { notificationStore } from "../../lib/integrations/notificationStore";
 import { LoadingState } from "../../components/Spinner";
 import { EmptyState } from "../../components/EmptyState";
+import { RefreshButton } from "../../components/RefreshButton";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
 import type { InventoryItem, Tier } from "../../lib/types";
 
@@ -244,7 +245,10 @@ export function CatalogPage() {
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-semibold">New Order</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display text-2xl font-semibold">New Order</h1>
+            <RefreshButton onRefresh={loadInventory} />
+          </div>
           <p className="text-sm text-ink-soft">
             Add items, then review. In-stock quantities commit; anything over what's available gets sent to Ops as a request.
           </p>
