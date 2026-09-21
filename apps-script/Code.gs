@@ -32,12 +32,14 @@
  *      in row 1 - Grammage/MRP/Shelf Life columns can be named and ordered
  *      however your sheet already has them) > Extensions > Apps Script.
  *   2. Paste this file into the editor.
- *   3. Run setupSheets() once. It creates the operational tabs - Accounts,
- *      Orders, OrderLines, FulfillmentLog - alongside your existing ones.
- *      It does not touch or seed your ratecard tab.
- *   4. (Optional) Project Settings > Script Properties > add API_TOKEN.
- *   5. Deploy > New deployment > Web app > Execute as: Me,
+ *   3. (Optional) Project Settings > Script Properties > add API_TOKEN.
+ *   4. Deploy > New deployment > Web app > Execute as: Me,
  *      Who has access: Anyone. Copy the /exec URL into VITE_SHEETS_API_URL.
+ * The operational tabs - Accounts, Orders, OrderLines, FulfillmentLog,
+ * ProductRequests - create themselves (via sheet_() below) the first time
+ * anything reads or writes them, so there's no manual setup step for them.
+ * Running setupSheets() is still fine and seeds two demo Accounts rows if
+ * you want a company to sign in as right away.
  */
 
 const TAB_ACCOUNTS = 'Accounts';
@@ -140,9 +142,16 @@ function withLock_(fn) {
 
 // ── Managed-tab helpers (Accounts / Orders / OrderLines / FulfillmentLog) ──
 
+/** Creates a managed tab with its header row the first time anything touches it - setupSheets() is a convenience, not a requirement. */
 function sheet_(name) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
-  if (!sheet) throw new Error('Missing tab "' + name + '". Run setupSheets() first.');
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = spreadsheet.getSheetByName(name);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(name);
+    const headers = COLUMNS[name];
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
   return sheet;
 }
 
