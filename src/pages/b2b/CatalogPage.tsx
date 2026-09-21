@@ -21,6 +21,7 @@ function CatalogRow({
   onChange: (qty: number) => void;
 }) {
   const c = TIER_CONFIG[item.tier];
+  const overStock = qty > item.currentStock;
   return (
     <div className={`flex items-center gap-3 rounded-md border border-l-[3px] border-line bg-paper-raised px-3 py-2 ${c.borderSolid}`}>
       <div className="min-w-0 flex-1">
@@ -28,6 +29,7 @@ function CatalogRow({
         <p className="mt-0.5 font-mono text-[10.5px] tabular-nums text-ink-faint">
           {item.category} · {item.grammageG}g · ₹{item.mrpInr} · avail {item.currentStock}
         </p>
+        {overStock && <p className="mt-0.5 text-[10.5px] text-warning">Not enough in stock — this will be sent to Ops as a request.</p>}
       </div>
       <div className="flex shrink-0 items-center gap-1">
         <button
@@ -41,14 +43,14 @@ function CatalogRow({
         <input
           type="number"
           min={0}
-          max={item.currentStock}
           value={qty}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="w-12 rounded border border-line bg-paper px-1 py-0.5 text-center text-[12.5px] tabular-nums transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+          className={`w-12 rounded border bg-paper px-1 py-0.5 text-center text-[12.5px] tabular-nums transition-colors focus:outline-none focus:ring-2 focus:ring-accent ${
+            overStock ? "border-warning" : "border-line"
+          }`}
         />
         <button
           onClick={() => onChange(qty + 1)}
-          disabled={qty >= item.currentStock}
           className="h-6 w-6 rounded border border-line text-ink-soft transition-colors hover:border-ink-faint hover:text-ink hover:bg-paper active:scale-95 disabled:opacity-40"
           aria-label={`Increase quantity for ${item.productName}`}
         >
@@ -102,33 +104,43 @@ export function CatalogPage() {
     return sum + qty * (item?.mrpInr ?? 0);
   }, 0);
 
+  // A line commits (reserves stock) if enough is available; otherwise the
+  // whole line goes to Ops as a product request instead - no partial split
+  // of a single line between the two, same "no partial approval" spirit as
+  // the rest of the order flow.
+  const toCommit = cartLines.filter(([skuId, qty]) => qty <= (items.find((i) => i.skuId === skuId)?.currentStock ?? 0));
+  const toRequest = cartLines.filter(([skuId, qty]) => qty > (items.find((i) => i.skuId === skuId)?.currentStock ?? 0));
+
   function setQty(skuId: string, qty: number) {
-    const item = items.find((i) => i.skuId === skuId);
-    const clamped = Math.max(0, Math.min(item?.currentStock ?? 0, Math.floor(qty) || 0));
+    const clamped = Math.max(0, Math.floor(qty) || 0);
     setCart((prev) => ({ ...prev, [skuId]: clamped }));
   }
 
-  async function commitOrder() {
+  async function submitOrder() {
     if (!user?.accountId) return;
     setBusy(true);
     try {
-      await dataClient.commitOrder(
-        user.accountId,
-        cartLines.map(([skuId, qty]) => ({ skuId, qty }))
-      );
-      notificationStore.push({
-        kind: "success",
-        title: "Order committed",
-        body: "Reserved from stock — push it anytime from the Committed tab.",
-      });
+      if (toCommit.length > 0) {
+        await dataClient.commitOrder(
+          user.accountId,
+          toCommit.map(([skuId, qty]) => ({ skuId, qty }))
+        );
+      }
+      await Promise.all(toRequest.map(([skuId, qty]) => dataClient.requestProduct(user.accountId!, skuId, qty, null)));
+
+      const parts: string[] = [];
+      if (toCommit.length > 0) parts.push("reserved from stock — push it from the Committed tab");
+      if (toRequest.length > 0) parts.push("sent to Ops as a request since there wasn't enough in stock");
+      notificationStore.push({ kind: "success", title: "Order submitted", body: parts.join("; ") + "." });
+
       setCart({});
       setStage("browsing");
-      navigate("/b2b/committed");
+      navigate(toCommit.length > 0 ? "/b2b/committed" : "/b2b/requests");
     } catch (err) {
       notificationStore.push({
         kind: "danger",
-        title: "Couldn't commit order",
-        body: err instanceof Error ? err.message : "Not enough stock available for one of the items.",
+        title: "Couldn't submit order",
+        body: err instanceof Error ? err.message : "Something went wrong.",
       });
     } finally {
       setBusy(false);
@@ -136,31 +148,64 @@ export function CatalogPage() {
   }
 
   if (stage === "preview") {
+    const buttonLabel =
+      toRequest.length === 0 ? "Commit order" : toCommit.length === 0 ? "Send request" : "Commit & request";
+    const busyLabel =
+      toRequest.length === 0 ? "Committing…" : toCommit.length === 0 ? "Sending…" : "Submitting…";
+
     return (
       <div className="mx-auto max-w-xl">
         <h1 className="font-display text-2xl font-semibold">Review order</h1>
         <p className="mb-6 text-sm text-ink-soft">Nothing is reserved yet — committing locks in these quantities.</p>
 
-        <div className="divide-y divide-line rounded-xl border border-line bg-paper-raised">
-          {cartLines.map(([skuId, qty]) => {
-            const item = items.find((i) => i.skuId === skuId);
-            return (
-              <div key={skuId} className="flex items-center justify-between px-4 py-3 text-sm">
-                <div>
-                  <p className="font-medium">{item?.productName ?? skuId}</p>
-                  <p className="font-mono text-[11.5px] tabular-nums text-ink-faint">
-                    {qty} × ₹{item?.mrpInr ?? 0}
-                  </p>
-                </div>
-                <p className="font-mono tabular-nums">₹{qty * (item?.mrpInr ?? 0)}</p>
+        {toCommit.length > 0 && (
+          <div className="mb-4">
+            <p className="mb-1.5 font-mono text-[10.5px] uppercase tracking-wide text-ink-faint">Committing now</p>
+            <div className="divide-y divide-line rounded-xl border border-line bg-paper-raised">
+              {toCommit.map(([skuId, qty]) => {
+                const item = items.find((i) => i.skuId === skuId);
+                return (
+                  <div key={skuId} className="flex items-center justify-between px-4 py-3 text-sm">
+                    <div>
+                      <p className="font-medium">{item?.productName ?? skuId}</p>
+                      <p className="font-mono text-[11.5px] tabular-nums text-ink-faint">
+                        {qty} × ₹{item?.mrpInr ?? 0}
+                      </p>
+                    </div>
+                    <p className="font-mono tabular-nums">₹{qty * (item?.mrpInr ?? 0)}</p>
+                  </div>
+                );
+              })}
+              <div className="flex items-center justify-between px-4 py-3">
+                <p className="font-semibold">Total</p>
+                <p className="font-mono text-base font-semibold tabular-nums">
+                  ₹{toCommit.reduce((sum, [skuId, qty]) => sum + qty * (items.find((i) => i.skuId === skuId)?.mrpInr ?? 0), 0)}
+                </p>
               </div>
-            );
-          })}
-          <div className="flex items-center justify-between px-4 py-3">
-            <p className="font-semibold">Total</p>
-            <p className="font-mono text-base font-semibold tabular-nums">₹{cartTotal}</p>
+            </div>
           </div>
-        </div>
+        )}
+
+        {toRequest.length > 0 && (
+          <div className="mb-4">
+            <p className="mb-1.5 font-mono text-[10.5px] uppercase tracking-wide text-warning">
+              Requesting from Ops — not enough in stock
+            </p>
+            <div className="divide-y divide-line rounded-xl border border-warning bg-paper-raised">
+              {toRequest.map(([skuId, qty]) => {
+                const item = items.find((i) => i.skuId === skuId);
+                return (
+                  <div key={skuId} className="flex items-center justify-between px-4 py-3 text-sm">
+                    <p className="font-medium">{item?.productName ?? skuId}</p>
+                    <p className="font-mono text-[11.5px] tabular-nums text-ink-soft">
+                      {qty} requested · {item?.currentStock ?? 0} avail
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="mt-5 flex items-center gap-2">
           <button
@@ -171,11 +216,11 @@ export function CatalogPage() {
             Back to catalog
           </button>
           <button
-            onClick={commitOrder}
+            onClick={submitOrder}
             disabled={busy}
             className="ml-auto rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-60"
           >
-            {busy ? "Committing…" : "Commit order"}
+            {busy ? busyLabel : buttonLabel}
           </button>
         </div>
       </div>
@@ -187,7 +232,9 @@ export function CatalogPage() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-semibold">New Order</h1>
-          <p className="text-sm text-ink-soft">Add items, then review and commit. Push from the Committed tab when ready.</p>
+          <p className="text-sm text-ink-soft">
+            Add items, then review. In-stock quantities commit; anything over what's available gets sent to Ops as a request.
+          </p>
         </div>
         <input
           value={search}

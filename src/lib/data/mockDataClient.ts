@@ -1,15 +1,16 @@
 import catalogSeed from "../../data/catalog.json";
 import { eventBus } from "../events";
 import { readMockFulfillmentSheet } from "../integrations/mockFulfillmentSheet";
-import type { B2BAccount, InventoryItem, StockRequest, Tier } from "../types";
+import type { B2BAccount, InventoryItem, ProductRequest, ProductRequestStatus, StockRequest, Tier } from "../types";
 import type { DataClient } from "./dataClient";
 
-const STORAGE_KEY = "snackible-ops-mock-db-v3";
+const STORAGE_KEY = "snackible-ops-mock-db-v4";
 
 interface DB {
   inventory: InventoryItem[];
   accounts: B2BAccount[];
   requests: StockRequest[];
+  productRequests: ProductRequest[];
 }
 
 const seedAccounts: B2BAccount[] = [
@@ -41,7 +42,7 @@ function seedDB(): DB {
     active: true,
     tier: "yellow" as Tier,
   }));
-  return { inventory, accounts: seedAccounts, requests: [] };
+  return { inventory, accounts: seedAccounts, requests: [], productRequests: [] };
 }
 
 function loadDB(): DB {
@@ -222,5 +223,48 @@ export const mockDataClient: DataClient = {
 
   async getFulfillmentLog() {
     return tick(readMockFulfillmentSheet());
+  },
+
+  async requestProduct(accountId, skuId, qty, note) {
+    findInventory(skuId); // throws if the SKU doesn't exist
+    const request: ProductRequest = {
+      requestId: id("preq"),
+      accountId,
+      skuId,
+      qty,
+      note,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+      decidedAt: null,
+      decidedBy: null,
+      holdUntil: null,
+    };
+    db.productRequests.unshift(request);
+    saveDB(db);
+    return tick(request);
+  },
+
+  async getProductRequests() {
+    return tick([...db.productRequests]);
+  },
+
+  async getProductRequestsForAccount(accountId) {
+    return tick(db.productRequests.filter((r) => r.accountId === accountId));
+  },
+
+  async decideProductRequests(skuId, decidedBy, status, holdUntil) {
+    const decidedAt = new Date().toISOString();
+    const decided: ProductRequest[] = [];
+    for (const r of db.productRequests) {
+      if (r.skuId === skuId && r.status === "pending") {
+        r.status = status as ProductRequestStatus;
+        r.decidedAt = decidedAt;
+        r.decidedBy = decidedBy;
+        r.holdUntil = status === "on_hold" ? holdUntil : null;
+        decided.push(r);
+      }
+    }
+    saveDB(db);
+    return tick(decided);
   },
 };

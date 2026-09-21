@@ -33,6 +33,15 @@ B2B orders happen in three tabs, not a single submit:
    their queue. Approve keeps the stock deducted; Decline releases it back.
    No partial approval — a request is approved or declined as a whole.
 
+**Not enough stock?** On New Order, a quantity above what's available
+doesn't get clamped — it's flagged, and on Review that line goes out as a
+**product request** instead of a commit (a single order can be a mix of
+both). Ops sees every pending request grouped by SKU at `/ops/product-requests`
+— several accounts asking for the same product add up into one line — and
+accepts, declines, or holds it with a deadline. Nothing here touches stock;
+it's a demand signal, not a reservation. Status shows up back on the B2B
+side under My Requests → Product requests.
+
 ## Tiers
 
 Each inventory item carries a `tier`: `green` / `yellow` / `orange` / `red`.
@@ -50,6 +59,10 @@ table or the drag-and-drop board at `/ops/tiers`. B2B sees the same tiers
 - **Auth** — mocked (`src/lib/auth/authStore.ts`), no password check. Swapping
   in real auth means replacing this module's `signIn`/`getCurrentUser` with
   calls to a real provider; nothing that calls `useAuth()` needs to change.
+  **The B2B side currently has no login at all** — `RequireRole` auto-signs
+  in a fixed `test-b2b` identity the moment any `/b2b` route is hit, purely
+  so the flow can be tested without real accounts configured. Remove the
+  bypass in `src/components/RequireRole.tsx` once real B2B auth exists.
 - **Data** — defaults to `src/lib/data/mockDataClient.ts` (localStorage).
   Set `VITE_SHEETS_API_URL` to switch to the real Google Sheets backend —
   see **Real backend (Google Sheets)**.

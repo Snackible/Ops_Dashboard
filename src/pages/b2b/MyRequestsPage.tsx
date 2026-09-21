@@ -4,18 +4,27 @@ import { useAuth } from "../../lib/auth/AuthContext";
 import { StatusPill } from "../../components/StatusPill";
 import { SkeletonRow } from "../../components/Skeleton";
 import { EmptyState } from "../../components/EmptyState";
-import type { InventoryItem, StockRequest } from "../../lib/types";
+import type { InventoryItem, ProductRequest, ProductRequestStatus, StockRequest } from "../../lib/types";
+
+const PRODUCT_REQUEST_STATUS_CONFIG: Record<ProductRequestStatus, { label: string; classes: string }> = {
+  pending: { label: "Pending", classes: "bg-warning-soft text-warning" },
+  accepted: { label: "Accepted", classes: "bg-success-soft text-success" },
+  declined: { label: "Declined", classes: "bg-danger-soft text-danger" },
+  on_hold: { label: "On hold", classes: "bg-accent-soft text-accent-ink" },
+};
 
 export function MyRequestsPage() {
   const { user } = useAuth();
   const [requests, setRequests] = useState<StockRequest[]>([]);
+  const [productRequests, setProductRequests] = useState<ProductRequest[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   async function refresh() {
     if (!user?.accountId) return;
-    const [reqs, inv] = await Promise.all([
+    const [reqs, preqs, inv] = await Promise.all([
       dataClient.getRequestsForAccount(user.accountId),
+      dataClient.getProductRequestsForAccount(user.accountId),
       dataClient.getInventory(),
     ]);
     setRequests(
@@ -23,6 +32,7 @@ export function MyRequestsPage() {
         .filter((r) => r.status !== "committed")
         .sort((a, b) => (b.submittedAt ?? "").localeCompare(a.submittedAt ?? ""))
     );
+    setProductRequests(preqs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
     setInventory(inv);
     setLoading(false);
   }
@@ -96,6 +106,37 @@ export function MyRequestsPage() {
           );
         })}
       </div>
+
+      {!loading && productRequests.length > 0 && (
+        <div className="mt-8">
+          <h2 className="mb-3 font-display text-lg font-semibold">Product requests</h2>
+          <p className="mb-3 text-sm text-ink-soft">Items you asked for that weren't in stock at the time.</p>
+          <div className="space-y-2">
+            {productRequests.map((r) => {
+              const item = bySku.get(r.skuId);
+              const c = PRODUCT_REQUEST_STATUS_CONFIG[r.status];
+              return (
+                <div key={r.requestId} className="rounded-md border border-line bg-paper-raised px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-medium">{item?.productName ?? r.skuId}</p>
+                      <p className="font-mono text-[10.5px] text-ink-faint">
+                        × {r.qty} · {new Date(r.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 font-mono text-[11px] font-medium ${c.classes}`}>
+                      {c.label}
+                    </span>
+                  </div>
+                  {r.status === "on_hold" && r.holdUntil && (
+                    <p className="mt-1.5 text-[12.5px] text-ink-soft">On hold until {new Date(r.holdUntil).toLocaleDateString()}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

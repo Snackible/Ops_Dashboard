@@ -59,6 +59,29 @@ export interface StockRequest {
   lineItems: RequestLineItem[];
 }
 
+/**
+ * A B2B account asking for more of something than's currently in stock -
+ * separate from StockRequest, which only ever reserves what's actually
+ * available. Ops can accept (they'll get it), decline, or hold with a
+ * deadline (revisit by then). Multiple accounts requesting the same SKU
+ * show up as one aggregated line on the Ops side - see ProductRequestsPage.
+ */
+export type ProductRequestStatus = "pending" | "accepted" | "declined" | "on_hold";
+
+export interface ProductRequest {
+  requestId: string;
+  accountId: string;
+  skuId: string;
+  qty: number;
+  note: string | null;
+  status: ProductRequestStatus;
+  createdAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  /** Only meaningful when status is "on_hold". */
+  holdUntil: string | null;
+}
+
 export interface FulfillmentLogRow {
   dateFulfilled: string;
   requestId: string;

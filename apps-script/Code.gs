@@ -44,12 +44,14 @@ const TAB_ACCOUNTS = 'Accounts';
 const TAB_ORDERS = 'Orders';
 const TAB_ORDER_LINES = 'OrderLines';
 const TAB_FULFILLMENT = 'FulfillmentLog';
+const TAB_PRODUCT_REQUESTS = 'ProductRequests';
 
 const COLUMNS = {
   [TAB_ACCOUNTS]: ['account_id', 'company_name', 'contact_name', 'contact_email', 'contact_phone'],
   [TAB_ORDERS]: ['request_id', 'account_id', 'status', 'created_at', 'submitted_at', 'decided_at', 'decided_by', 'decision_note'],
   [TAB_ORDER_LINES]: ['line_item_id', 'request_id', 'sku_id', 'qty', 'unit_mrp_snapshot'],
   [TAB_FULFILLMENT]: ['date_fulfilled', 'request_id', 'company_name', 'contact_name', 'contact_phone', 'category', 'product_name', 'qty', 'unit_mrp', 'line_total', 'approved_by', 'notes'],
+  [TAB_PRODUCT_REQUESTS]: ['request_id', 'account_id', 'sku_id', 'qty', 'note', 'status', 'created_at', 'decided_at', 'decided_by', 'hold_until'],
 };
 
 const OPERATIONAL_HEADERS = {
@@ -96,6 +98,8 @@ function route_(body) {
       case 'getRequestsForAccount': return ok_(getRequests_(body.accountId));
       case 'getCommittedOrders': return ok_(getRequests_(body.accountId).filter(r => r.status === 'committed'));
       case 'getFulfillmentLog': return ok_(getFulfillmentLog_());
+      case 'getProductRequests': return ok_(getProductRequests_(null));
+      case 'getProductRequestsForAccount': return ok_(getProductRequests_(body.accountId));
 
       // writes
       case 'updateStock': return ok_(withLock_(() => setInventoryField_(body.skuId, 'current_stock', body.currentStock)));
@@ -105,6 +109,8 @@ function route_(body) {
       case 'pushOrder': return ok_(withLock_(() => pushOrder_(body.requestId)));
       case 'cancelOrder': return ok_(withLock_(() => cancelOrder_(body.requestId)));
       case 'decideRequest': return ok_(withLock_(() => decideRequest_(body.requestId, body.decidedBy, body.approve, body.decisionNote)));
+      case 'requestProduct': return ok_(withLock_(() => requestProduct_(body.accountId, body.skuId, body.qty, body.note)));
+      case 'decideProductRequests': return ok_(withLock_(() => decideProductRequests_(body.skuId, body.decidedBy, body.status, body.holdUntil)));
 
       default: return { ok: false, error: 'Unknown action: ' + body.action };
     }
@@ -445,6 +451,23 @@ function getRequests_(accountId) {
     }));
 }
 
+function getProductRequests_(accountId) {
+  return readTab_(TAB_PRODUCT_REQUESTS)
+    .filter(r => !accountId || String(r.account_id) === accountId)
+    .map(r => ({
+      requestId: String(r.request_id),
+      accountId: String(r.account_id),
+      skuId: String(r.sku_id),
+      qty: Number(r.qty),
+      note: r.note ? String(r.note) : null,
+      status: String(r.status),
+      createdAt: isoOrNull_(r.created_at) || new Date().toISOString(),
+      decidedAt: isoOrNull_(r.decided_at),
+      decidedBy: r.decided_by ? String(r.decided_by) : null,
+      holdUntil: isoOrNull_(r.hold_until),
+    }));
+}
+
 function getFulfillmentLog_() {
   return readTab_(TAB_FULFILLMENT).map(r => ({
     dateFulfilled: isoOrNull_(r.date_fulfilled),
@@ -614,6 +637,50 @@ function decideRequest_(requestId, decidedBy, approve, decisionNote) {
   }
 
   return getRequests_(null).filter(r => r.requestId === requestId)[0];
+}
+
+/** B2B asking for more of a SKU than's currently available - doesn't touch stock at all. */
+function requestProduct_(accountId, skuId, qty, note) {
+  if (!(Number(qty) > 0)) throw new Error('Quantity must be greater than 0');
+  const item = readRatecardRows_().rows.filter(r => r.skuId === skuId)[0];
+  if (!item) throw new Error('Unknown SKU ' + skuId);
+
+  const requestId = newId_('preq');
+  appendRows_(TAB_PRODUCT_REQUESTS, [{
+    request_id: requestId,
+    account_id: accountId,
+    sku_id: skuId,
+    qty: Number(qty),
+    note: note || '',
+    status: 'pending',
+    created_at: new Date().toISOString(),
+    decided_at: '',
+    decided_by: '',
+    hold_until: '',
+  }]);
+
+  return getProductRequests_(null).filter(r => r.requestId === requestId)[0];
+}
+
+/**
+ * Decides every still-pending ProductRequest for one SKU at once - this is
+ * what makes multiple accounts' requests for the same product "add up":
+ * Ops only ever sees and acts on one aggregated line per SKU.
+ */
+function decideProductRequests_(skuId, decidedBy, status, holdUntil) {
+  if (['accepted', 'declined', 'on_hold'].indexOf(status) === -1) throw new Error('Unknown status ' + status);
+
+  const decidedAt = new Date().toISOString();
+  const rows = readTab_(TAB_PRODUCT_REQUESTS).filter(r => String(r.sku_id) === skuId && String(r.status) === 'pending');
+  rows.forEach(row => {
+    writeCell_(TAB_PRODUCT_REQUESTS, row.__row, 'status', status);
+    writeCell_(TAB_PRODUCT_REQUESTS, row.__row, 'decided_at', decidedAt);
+    writeCell_(TAB_PRODUCT_REQUESTS, row.__row, 'decided_by', decidedBy || '');
+    writeCell_(TAB_PRODUCT_REQUESTS, row.__row, 'hold_until', status === 'on_hold' ? (holdUntil || '') : '');
+  });
+
+  const decidedIds = rows.map(r => String(r.request_id));
+  return getProductRequests_(null).filter(r => decidedIds.indexOf(r.requestId) !== -1);
 }
 
 // ── One-time setup ──────────────────────────────────────────────────────

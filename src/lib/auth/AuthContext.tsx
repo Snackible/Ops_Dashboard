@@ -15,11 +15,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => subscribeAuth(setUser), []);
 
-  return (
-    <AuthContext.Provider value={{ user, signIn: storeSignIn, signOut: storeSignOut }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  // Update local state directly rather than relying only on the subscription -
+  // a caller effect (e.g. RequireRole's auto sign-in) can fire before this
+  // provider's own subscribeAuth effect has run, since React fires child
+  // effects before parent effects on mount, and that update would otherwise
+  // be silently lost.
+  function signIn(next: AuthUser) {
+    storeSignIn(next);
+    setUser(next);
+  }
+
+  function signOut() {
+    storeSignOut();
+    setUser(null);
+  }
+
+  return <AuthContext.Provider value={{ user, signIn, signOut }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthContextValue {

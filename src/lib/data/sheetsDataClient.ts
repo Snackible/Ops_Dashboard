@@ -1,5 +1,5 @@
 import { callSheets } from "./sheetsClient";
-import type { B2BAccount, FulfillmentLogRow, InventoryItem, StockRequest } from "../types";
+import type { B2BAccount, FulfillmentLogRow, InventoryItem, ProductRequest, StockRequest } from "../types";
 import type { DataClient } from "./dataClient";
 
 /**
@@ -68,5 +68,21 @@ export const sheetsDataClient: DataClient = {
 
   getFulfillmentLog() {
     return callSheets<FulfillmentLogRow[]>("getFulfillmentLog");
+  },
+
+  requestProduct(accountId, skuId, qty, note) {
+    return callSheets<ProductRequest>("requestProduct", { accountId, skuId, qty, note });
+  },
+
+  getProductRequests() {
+    return callSheets<ProductRequest[]>("getProductRequests");
+  },
+
+  getProductRequestsForAccount(accountId) {
+    return callSheets<ProductRequest[]>("getProductRequestsForAccount", { accountId });
+  },
+
+  decideProductRequests(skuId, decidedBy, status, holdUntil) {
+    return callSheets<ProductRequest[]>("decideProductRequests", { skuId, decidedBy, status, holdUntil });
   },
 };

@@ -11,6 +11,7 @@ import { QueuePage } from "./pages/ops/QueuePage";
 import { InventoryPage } from "./pages/ops/InventoryPage";
 import { TierBoardPage } from "./pages/ops/TierBoardPage";
 import { HistoryPage } from "./pages/ops/HistoryPage";
+import { ProductRequestsPage } from "./pages/ops/ProductRequestsPage";
 
 const B2B_NAV = [
   { to: "/b2b", label: "New Order" },
@@ -20,6 +21,7 @@ const B2B_NAV = [
 
 const OPS_NAV = [
   { to: "/ops", label: "Queue" },
+  { to: "/ops/product-requests", label: "Product Requests" },
   { to: "/ops/tiers", label: "Tiers" },
   { to: "/ops/inventory", label: "Inventory" },
   { to: "/ops/history", label: "History" },
@@ -68,13 +70,22 @@ export function App() {
             </RequireRole>
           }
         />
-
         <Route
           path="/ops"
           element={
             <RequireRole role="ops">
               <PortalShell brandLabel="Ops" navItems={OPS_NAV}>
                 <QueuePage />
+              </PortalShell>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/ops/product-requests"
+          element={
+            <RequireRole role="ops">
+              <PortalShell brandLabel="Ops" navItems={OPS_NAV}>
+                <ProductRequestsPage />
               </PortalShell>
             </RequireRole>
           }

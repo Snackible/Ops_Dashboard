@@ -1,4 +1,4 @@
-import type { B2BAccount, FulfillmentLogRow, InventoryItem, StockRequest, Tier } from "../types";
+import type { B2BAccount, FulfillmentLogRow, InventoryItem, ProductRequest, ProductRequestStatus, StockRequest, Tier } from "../types";
 
 /**
  * Everything the UI needs from a backend, named after what the app does
@@ -56,4 +56,23 @@ export interface DataClient {
 
   /** Fulfillment rows written on approval - a sheet tab, or its mock stand-in. */
   getFulfillmentLog(): Promise<FulfillmentLogRow[]>;
+
+  /** B2B asks for more of a SKU than's currently available. */
+  requestProduct(accountId: string, skuId: string, qty: number, note: string | null): Promise<ProductRequest>;
+
+  getProductRequests(): Promise<ProductRequest[]>;
+  getProductRequestsForAccount(accountId: string): Promise<ProductRequest[]>;
+
+  /**
+   * Decides every still-pending ProductRequest for one SKU at once - that's
+   * the "multiple requests for the same product add up" behavior: Ops sees
+   * one aggregated line per SKU and acts on it as a whole. `holdUntil` is
+   * required for "on_hold" and ignored otherwise.
+   */
+  decideProductRequests(
+    skuId: string,
+    decidedBy: string,
+    status: Exclude<ProductRequestStatus, "pending">,
+    holdUntil: string | null
+  ): Promise<ProductRequest[]>;
 }
