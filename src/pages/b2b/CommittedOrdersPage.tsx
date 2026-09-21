@@ -12,6 +12,7 @@ export function CommittedOrdersPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [pushingId, setPushingId] = useState<string | null>(null);
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
 
   async function refresh() {
     if (!user?.accountId) return;
@@ -42,6 +43,18 @@ export function CommittedOrdersPage() {
     }
   }
 
+  async function cancel(requestId: string) {
+    if (!confirm("Cancel this committed order? Reserved stock will be released.")) return;
+    setCancelingId(requestId);
+    try {
+      await dataClient.cancelOrder(requestId);
+      notificationStore.push({ kind: "success", title: "Order cancelled", body: "Reserved stock was released." });
+      await refresh();
+    } finally {
+      setCancelingId(null);
+    }
+  }
+
   return (
     <div>
       <h1 className="font-display text-2xl font-semibold">Committed</h1>
@@ -64,6 +77,7 @@ export function CommittedOrdersPage() {
         {orders.map((order) => {
           const total = order.lineItems.reduce((sum, li) => sum + li.qty * li.unitMrpSnapshot, 0);
           const busy = pushingId === order.requestId;
+          const canceling = cancelingId === order.requestId;
           return (
             <div key={order.requestId} className="rounded-xl border border-line bg-paper-raised p-5 transition-shadow hover:shadow-card">
               <div className="mb-3 flex items-center justify-between">
@@ -83,10 +97,17 @@ export function CommittedOrdersPage() {
                 ))}
               </div>
 
-              <div className="mt-3 flex justify-end">
+              <div className="mt-3 flex justify-end gap-2">
+                <button
+                  onClick={() => cancel(order.requestId)}
+                  disabled={busy || canceling}
+                  className="rounded-md border border-line px-4 py-1.5 text-sm font-medium text-ink-soft transition-all hover:bg-paper active:scale-[0.97] disabled:opacity-60"
+                >
+                  {canceling ? "Cancelling…" : "Cancel"}
+                </button>
                 <button
                   onClick={() => push(order.requestId)}
-                  disabled={busy}
+                  disabled={busy || canceling}
                   className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-60"
                 >
                   {busy ? "Pushing…" : "Push now"}

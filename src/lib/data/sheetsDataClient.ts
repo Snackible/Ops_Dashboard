@@ -50,6 +50,10 @@ export const sheetsDataClient: DataClient = {
     return callSheets<StockRequest>("pushOrder", { requestId });
   },
 
+  cancelOrder(requestId) {
+    return callSheets<void>("cancelOrder", { requestId });
+  },
+
   getRequests() {
     return callSheets<StockRequest[]>("getRequests");
   },

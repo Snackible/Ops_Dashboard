@@ -26,7 +26,9 @@ B2B orders happen in three tabs, not a single submit:
    reserves or none of it does — see the Apps Script functions below).
 3. **Committed** — every committed-but-unpushed order lives here. Nothing
    auto-pushes; an account can hold several committed orders at once and
-   push each independently whenever it's ready.
+   push each independently whenever it's ready. **Cancel** undoes a commit
+   entirely (releases the reserved stock, removes the order) — for orders
+   Ops never saw, not a decision Ops needs to weigh in on.
 4. **My Requests** — once pushed, an order moves here and Ops sees it in
    their queue. Approve keeps the stock deducted; Decline releases it back.
    No partial approval — a request is approved or declined as a whole.
@@ -43,7 +45,8 @@ table or the drag-and-drop board at `/ops/tiers`. B2B sees the same tiers
 
 - **Catalog** (`src/data/catalog.json`) — the actual 73 SKUs transcribed from
   the Snackible ratecard sheet. Used only to seed the localStorage mock;
-  the real backend reads the ratecard directly (see below).
+  the real backend reads your live ratecard tab directly, every call, with
+  no copy in between (see below).
 - **Auth** — mocked (`src/lib/auth/authStore.ts`), no password check. Swapping
   in real auth means replacing this module's `signIn`/`getCurrentUser` with
   calls to a real provider; nothing that calls `useAuth()` needs to change.
@@ -60,23 +63,41 @@ The app talks to data through one interface (`DataClient`,
 two implementations of it, picked in `src/lib/data/index.ts` based on
 whether `VITE_SHEETS_API_URL` is set. The Sheets side is a small Apps Script
 web app (`apps-script/Code.gs`) bound to a spreadsheet — the spreadsheet
-*is* the database, one tab per table.
+*is* the database.
+
+**Inventory has no tab of its own.** It's read and written directly against
+*every* tab in the spreadsheet that already looks like a ratecard (any tab
+with "Category" and "Product Name" header columns — column order and where
+Grammage/MRP/Shelf Life sit don't matter, they're matched by header name).
+A "Standard Grammage" tab and a "One Serving Pack" tab both contribute rows
+as distinct, independently-stocked SKUs. Nothing is copied out of them,
+and `setupSheets()` never writes to them.
+
+Three columns get added to a ratecard tab the first time they're needed:
+
+- **Current Stock** — missing entirely, or blank on a row, means 0. Type
+  real counts in yourself, or let the app fill it in the moment someone
+  commits/cancels an order, approves/declines a request, or Ops edits stock
+  from the dashboard. (`Inventory` or `Stock` are also recognized if you'd
+  rather name the column that.)
+- **Active** — missing or blank means active.
+- **Tier** — missing or blank means `yellow`.
+
+**Larger Pack pricing.** If a row also has "Larger Pack Grammage (g)" and
+"Larger Pack MRP (INR)" filled in (not blank or "NA"), that's a second,
+independently-orderable SKU — same product, bigger pack, its own price and
+its own `Larger Pack Current Stock` / `Larger Pack Active` / `Larger Pack
+Tier` columns (created lazily the same way). Rows where those two columns
+are blank or "NA" just produce the one standard-size SKU.
 
 **Setup:**
 
-1. Open the spreadsheet that already has your ratecard tab (Category |
-   Product Name | Grammage (g) | MRP (INR) | Shelf Life) → Extensions →
+1. Open the spreadsheet that already has your ratecard tab → Extensions →
    Apps Script.
-2. Paste in `apps-script/Code.gs` and `apps-script/Catalog.gs` (regenerate
-   the latter with `node scripts/generate-apps-script-catalog.js` if you
-   ever need the bundled-snapshot fallback to match a newer ratecard).
-3. Run `setupSheets()` once. It adds the operational tabs — `Inventory`,
-   `Accounts`, `Orders`, `OrderLines`, `FulfillmentLog` — alongside your
-   existing ones, and seeds `Inventory` by reading the real rows straight
-   out of your ratecard tab (`extractCatalogFromRatecard_`), skipping the
-   section-banner rows ("Best Sellers") and blank spacers that live in
-   between. `Catalog.gs` only kicks in as a fallback if no ratecard-shaped
-   tab is found.
+2. Paste in `apps-script/Code.gs`.
+3. Run `setupSheets()` once. It only adds the operational tabs —
+   `Accounts`, `Orders`, `OrderLines`, `FulfillmentLog` — and seeds two
+   demo `Accounts` rows. It does not touch the ratecard tab.
 4. (Optional) Project Settings → Script Properties → add `API_TOKEN` if you
    want a shared secret, not just an unguessable URL, gating the endpoint.
 5. Deploy → New deployment → Web app → Execute as **Me**, Who has access

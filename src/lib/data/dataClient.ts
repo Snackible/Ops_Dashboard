@@ -36,6 +36,9 @@ export interface DataClient {
   /** Sends one committed order to Ops: status committed -> pending. */
   pushOrder(requestId: string): Promise<StockRequest>;
 
+  /** Undoes a commit that was never pushed - releases its reserved stock and removes it. */
+  cancelOrder(requestId: string): Promise<void>;
+
   getRequests(): Promise<StockRequest[]>;
   getRequestsForAccount(accountId: string): Promise<StockRequest[]>;
 

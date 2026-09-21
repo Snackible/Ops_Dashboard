@@ -2,43 +2,59 @@
  * Snackible Ops Dashboard - Google Sheets backend.
  *
  * This file is the whole backend. It runs as an Apps Script Web App bound to
- * one spreadsheet, and that spreadsheet IS the database: one tab per table.
+ * one spreadsheet, and that spreadsheet IS the database.
+ *
+ * Inventory has no tab of its own - it reads and writes directly against
+ * every existing tab that looks like a ratecard (a "Category" + "Product
+ * Name" header pair), the same tabs you already price products in - e.g. a
+ * "Standard Grammage" tab and a "One Serving Pack" tab both contribute rows,
+ * kept as distinct SKUs. Nothing is copied out of them. Three extra columns
+ * get added to each tab the first time they're needed:
+ *   - Current Stock - absent (or blank on a row) means 0. Ops can type real
+ *     counts into this column by hand, or the app fills it in the moment
+ *     someone commits an order, toggles active, or re-tiers something.
+ *   - Active        - absent or blank means active.
+ *   - Tier          - absent or blank means "yellow".
+ * If you'd rather name the stock column yourself, "Inventory" or "Stock"
+ * are recognized too - see ratecardColumns_() below.
  *
  * Why Apps Script rather than calling the Sheets API from the browser:
  *   - The browser never holds a credential. The script runs as the sheet's
  *     owner, so B2B users don't need Google accounts or sheet access.
  *   - LockService gives us a global mutex. Sheets has no transactions, so
- *     without it two accounts committing at the same moment would both read
+ *     without it two accounts committing at the same moment could both read
  *     "12 in stock" and both reserve 10. Every mutating action below runs
  *     inside withLock_(), which is what makes stock math safe.
  *
  * Setup (once):
- *   1. Open the SAME spreadsheet that already has your ratecard tab
- *      (Category | Product Name | Grammage (g) | MRP (INR) | Shelf Life)
- *      > Extensions > Apps Script.
- *   2. Paste this file and Catalog.gs into the editor.
- *   3. Run setupSheets() once. It creates the operational tabs (Inventory,
- *      Accounts, Orders, OrderLines, FulfillmentLog) alongside your existing
- *      ones, and seeds Inventory by reading the real rows out of your
- *      ratecard tab (see extractCatalogFromRatecard_) - not from a bundled
- *      snapshot. Catalog.gs is only a fallback if no ratecard tab is found.
+ *   1. Open the spreadsheet that already has your ratecard tab in it
+ *      (a tab with "Category" and "Product Name" header columns somewhere
+ *      in row 1 - Grammage/MRP/Shelf Life columns can be named and ordered
+ *      however your sheet already has them) > Extensions > Apps Script.
+ *   2. Paste this file into the editor.
+ *   3. Run setupSheets() once. It creates the operational tabs - Accounts,
+ *      Orders, OrderLines, FulfillmentLog - alongside your existing ones.
+ *      It does not touch or seed your ratecard tab.
  *   4. (Optional) Project Settings > Script Properties > add API_TOKEN.
  *   5. Deploy > New deployment > Web app > Execute as: Me,
  *      Who has access: Anyone. Copy the /exec URL into VITE_SHEETS_API_URL.
  */
 
-const TAB_INVENTORY = 'Inventory';
 const TAB_ACCOUNTS = 'Accounts';
 const TAB_ORDERS = 'Orders';
 const TAB_ORDER_LINES = 'OrderLines';
 const TAB_FULFILLMENT = 'FulfillmentLog';
 
 const COLUMNS = {
-  [TAB_INVENTORY]: ['sku_id', 'category', 'product_name', 'grammage_g', 'mrp_inr', 'shelf_life_days', 'current_stock', 'active', 'tier'],
   [TAB_ACCOUNTS]: ['account_id', 'company_name', 'contact_name', 'contact_email', 'contact_phone'],
   [TAB_ORDERS]: ['request_id', 'account_id', 'status', 'created_at', 'submitted_at', 'decided_at', 'decided_by', 'decision_note'],
   [TAB_ORDER_LINES]: ['line_item_id', 'request_id', 'sku_id', 'qty', 'unit_mrp_snapshot'],
   [TAB_FULFILLMENT]: ['date_fulfilled', 'request_id', 'company_name', 'contact_name', 'contact_phone', 'category', 'product_name', 'qty', 'unit_mrp', 'line_total', 'approved_by', 'notes'],
+};
+
+const OPERATIONAL_HEADERS = {
+  standard: { stock: 'Current Stock', active: 'Active', tier: 'Tier' },
+  largerPack: { stock: 'Larger Pack Current Stock', active: 'Larger Pack Active', tier: 'Larger Pack Tier' },
 };
 
 // ── Web app entry points ────────────────────────────────────────────────
@@ -87,6 +103,7 @@ function route_(body) {
       case 'setTier': return ok_(withLock_(() => setInventoryField_(body.skuId, 'tier', body.tier)));
       case 'commitOrder': return ok_(withLock_(() => commitOrder_(body.accountId, body.lineItems)));
       case 'pushOrder': return ok_(withLock_(() => pushOrder_(body.requestId)));
+      case 'cancelOrder': return ok_(withLock_(() => cancelOrder_(body.requestId)));
       case 'decideRequest': return ok_(withLock_(() => decideRequest_(body.requestId, body.decidedBy, body.approve, body.decisionNote)));
 
       default: return { ok: false, error: 'Unknown action: ' + body.action };
@@ -115,7 +132,7 @@ function withLock_(fn) {
   }
 }
 
-// ── Sheet helpers ───────────────────────────────────────────────────────
+// ── Managed-tab helpers (Accounts / Orders / OrderLines / FulfillmentLog) ──
 
 function sheet_(name) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
@@ -123,7 +140,7 @@ function sheet_(name) {
   return sheet;
 }
 
-/** Reads a whole tab as objects keyed by the header row. */
+/** Reads a whole managed tab as objects keyed by the header row. */
 function readTab_(name) {
   const values = sheet_(name).getDataRange().getValues();
   if (values.length < 2) return [];
@@ -161,19 +178,235 @@ function isoOrNull_(value) {
   return value instanceof Date ? value.toISOString() : String(value);
 }
 
+function slugify_(text) {
+  return String(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+// ── Ratecard sheet (this IS the Inventory tab) ──────────────────────────
+
+/**
+ * Finds every ratecard tab already sitting in this spreadsheet - any
+ * non-managed tab whose header row has both a "Category" and a
+ * "Product Name"-ish column, wherever they happen to be. Column order and
+ * naming otherwise (Grammage/MRP/Shelf Life, plus whatever else like a
+ * "Larger Pack" variant lives alongside them) don't matter - see
+ * ratecardColumns_(). All matching tabs are used - e.g. a "Standard
+ * Grammage" tab and a "One Serving Pack" tab both feed Inventory as
+ * distinct, independently-stocked rows.
+ */
+function findRatecardSheets_() {
+  const managed = Object.keys(COLUMNS);
+  const sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+  const matches = [];
+  for (let i = 0; i < sheets.length; i++) {
+    const sheet = sheets[i];
+    if (managed.indexOf(sheet.getName()) !== -1) continue;
+    if (sheet.getLastRow() === 0 || sheet.getLastColumn() === 0) continue;
+    const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim().toLowerCase());
+    const hasCategory = header.indexOf('category') !== -1;
+    const hasProduct = header.some(h => h.indexOf('product') !== -1);
+    if (hasCategory && hasProduct) matches.push(sheet);
+  }
+  if (matches.length === 0) throw new Error('No ratecard tab found. Add a tab with "Category" and "Product Name" header columns.');
+  return matches;
+}
+
+function findHeaderCol_(header, matcher) {
+  for (let i = 0; i < header.length; i++) {
+    if (matcher(header[i])) return i;
+  }
+  return -1;
+}
+
+/** Locates every column this app cares about on the ratecard tab by header name, not position. */
+function ratecardColumns_(sheet) {
+  const lastCol = sheet.getLastColumn();
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim().toLowerCase());
+  const isLarger = h => h.indexOf('larger') !== -1;
+  return {
+    lastCol: lastCol,
+    catCol: findHeaderCol_(header, h => h === 'category'),
+    nameCol: findHeaderCol_(header, h => h.indexOf('product') !== -1),
+    gramCol: findHeaderCol_(header, h => h.indexOf('grammage') !== -1 && !isLarger(h)),
+    mrpCol: findHeaderCol_(header, h => h.indexOf('mrp') !== -1 && !isLarger(h)),
+    shelfCol: findHeaderCol_(header, h => h.indexOf('shelf') !== -1),
+    stockCol: findHeaderCol_(header, h => !isLarger(h) && (h.indexOf('current stock') !== -1 || h === 'inventory' || h === 'stock')),
+    activeCol: findHeaderCol_(header, h => h === 'active'),
+    tierCol: findHeaderCol_(header, h => h === 'tier'),
+    // Some ratecard tabs (e.g. "Standard Grammage") also price a bigger pack
+    // of the same product on the same row - a distinct orderable SKU with
+    // its own grammage/price and, once touched, its own stock/active/tier.
+    largerGramCol: findHeaderCol_(header, h => h.indexOf('grammage') !== -1 && isLarger(h)),
+    largerMrpCol: findHeaderCol_(header, h => h.indexOf('mrp') !== -1 && isLarger(h)),
+    largerStockCol: findHeaderCol_(header, h => isLarger(h) && (h.indexOf('current stock') !== -1 || h.indexOf('inventory') !== -1 || h.indexOf('stock') !== -1)),
+    largerActiveCol: findHeaderCol_(header, h => h === 'larger pack active'),
+    largerTierCol: findHeaderCol_(header, h => h === 'larger pack tier'),
+  };
+}
+
+/**
+ * Resolves a field (stock/active/tier) to a 1-based column to write to.
+ * `field.index` is the column ratecardColumns_() already found for this
+ * sheet via alias matching (e.g. a column the user named "Inventory") - if
+ * that's set, it's used as-is, so a write never creates a second column
+ * next to one that already exists under a different recognized name. Only
+ * when no such column was found at all does this fall back to looking for
+ * (or creating) one under the canonical name, re-checking the header row
+ * first in case an earlier write in this same request already added it.
+ */
+function resolveRatecardColumn_(sheet, field) {
+  if (field.index !== -1) return field.index + 1;
+
+  const lastCol = sheet.getLastColumn();
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  for (let i = 0; i < header.length; i++) {
+    if (String(header[i]).trim().toLowerCase() === field.header.toLowerCase()) return i + 1;
+  }
+  const newCol = lastCol + 1;
+  sheet.getRange(1, newCol).setValue(field.header).setFontWeight('bold');
+  return newCol;
+}
+
+function uniqueSkuId_(seenIds, base, sheetName) {
+  let skuId = base;
+  if (seenIds[skuId]) {
+    // Already used by another row (a different tab, or this product's own
+    // larger-pack variant) - tag it with the tab name so both stay
+    // addressable and stable.
+    skuId = slugify_(base + '-' + sheetName);
+    let suffix = 2;
+    while (seenIds[skuId]) { skuId = slugify_(base + '-' + sheetName) + '-' + suffix++; }
+  }
+  seenIds[skuId] = true;
+  return skuId;
+}
+
+function readNumericCell_(value) {
+  if (value === '' || value === null || value === undefined) return null;
+  const n = Number(value);
+  return isNaN(n) ? null : n;
+}
+
+function readOperationalCell_(colIndex, r, kind, fallback) {
+  if (colIndex === -1) return fallback;
+  const val = r[colIndex];
+  if (val === '' || val === null || val === undefined) return fallback;
+  if (kind === 'stock') { const n = Number(val); return isNaN(n) ? fallback : n; }
+  if (kind === 'active') return val === true || String(val).toUpperCase() === 'TRUE';
+  return String(val).trim().toLowerCase(); // tier
+}
+
+/**
+ * Reads every real product row off every ratecard tab. Section-banner rows
+ * (a big merged "Best Sellers"-style divider) and blank spacer rows have no
+ * numeric grammage/MRP/shelf life - that's what distinguishes an actual
+ * product row here, not just a non-empty Category cell. Each row carries
+ * its own `sheet` reference and its own `fields` (which Current
+ * Stock/Active/Tier columns to read/write, and under what name to create
+ * one if it's missing) so writes land back on the right tab and column.
+ *
+ * The same Category + Product Name can legitimately appear more than once -
+ * across tabs (a bulk pack on "Standard Grammage", a trial size on "One
+ * Serving Pack") or on the same row (a "Larger Pack Grammage/MRP" pair next
+ * to the standard one). Each becomes its own row with a distinct sku_id
+ * rather than colliding together.
+ */
+function readRatecardRows_() {
+  const sheets = findRatecardSheets_();
+  const rows = [];
+  const seenIds = {};
+
+  sheets.forEach(sheet => {
+    const cols = ratecardColumns_(sheet);
+    const missing = ['catCol', 'nameCol', 'gramCol', 'mrpCol', 'shelfCol'].filter(k => cols[k] === -1);
+    if (missing.length > 0) {
+      throw new Error('Ratecard tab "' + sheet.getName() + '" is missing a header column for: ' + missing.join(', '));
+    }
+
+    const values = sheet.getDataRange().getValues();
+
+    for (let i = 1; i < values.length; i++) {
+      const r = values[i];
+      const category = r[cols.catCol];
+      const productName = r[cols.nameCol];
+      const grammage = r[cols.gramCol];
+      const mrp = r[cols.mrpCol];
+      const shelfLife = r[cols.shelfCol];
+      if (!category || !productName) continue;
+      if (grammage === '' || mrp === '' || shelfLife === '') continue;
+      if (isNaN(Number(grammage)) || isNaN(Number(mrp)) || isNaN(Number(shelfLife))) continue;
+
+      const catTrimmed = String(category).trim();
+      const nameTrimmed = String(productName).trim();
+      const rowNumber = i + 1;
+
+      const standardBase = slugify_(catTrimmed + '-' + nameTrimmed);
+      rows.push({
+        sheet: sheet,
+        __row: rowNumber,
+        skuId: uniqueSkuId_(seenIds, standardBase, sheet.getName()),
+        category: catTrimmed,
+        productName: nameTrimmed,
+        grammageG: Number(grammage),
+        mrpInr: Number(mrp),
+        shelfLifeDays: Number(shelfLife),
+        currentStock: readOperationalCell_(cols.stockCol, r, 'stock', 0),
+        active: readOperationalCell_(cols.activeCol, r, 'active', true),
+        tier: readOperationalCell_(cols.tierCol, r, 'tier', 'yellow'),
+        fields: {
+          stock: { index: cols.stockCol, header: OPERATIONAL_HEADERS.standard.stock },
+          active: { index: cols.activeCol, header: OPERATIONAL_HEADERS.standard.active },
+          tier: { index: cols.tierCol, header: OPERATIONAL_HEADERS.standard.tier },
+        },
+      });
+
+      if (cols.largerGramCol !== -1 && cols.largerMrpCol !== -1) {
+        const largerGrammage = readNumericCell_(r[cols.largerGramCol]);
+        const largerMrp = readNumericCell_(r[cols.largerMrpCol]);
+        if (largerGrammage !== null && largerMrp !== null) {
+          const largerBase = slugify_(catTrimmed + '-' + nameTrimmed + '-larger-pack');
+          rows.push({
+            sheet: sheet,
+            __row: rowNumber,
+            skuId: uniqueSkuId_(seenIds, largerBase, sheet.getName()),
+            category: catTrimmed,
+            productName: nameTrimmed,
+            grammageG: largerGrammage,
+            mrpInr: largerMrp,
+            shelfLifeDays: Number(shelfLife),
+            currentStock: readOperationalCell_(cols.largerStockCol, r, 'stock', 0),
+            active: readOperationalCell_(cols.largerActiveCol, r, 'active', true),
+            tier: readOperationalCell_(cols.largerTierCol, r, 'tier', 'yellow'),
+            fields: {
+              stock: { index: cols.largerStockCol, header: OPERATIONAL_HEADERS.largerPack.stock },
+              active: { index: cols.largerActiveCol, header: OPERATIONAL_HEADERS.largerPack.active },
+              tier: { index: cols.largerTierCol, header: OPERATIONAL_HEADERS.largerPack.tier },
+            },
+          });
+        }
+      }
+    }
+  });
+
+  return { rows: rows };
+}
+
 // ── Reads (rows come back already shaped for the app) ───────────────────
 
 function getInventory_() {
-  return readTab_(TAB_INVENTORY).map(r => ({
-    skuId: String(r.sku_id),
-    category: String(r.category),
-    productName: String(r.product_name),
-    grammageG: Number(r.grammage_g),
-    mrpInr: Number(r.mrp_inr),
-    shelfLifeDays: Number(r.shelf_life_days),
-    currentStock: Number(r.current_stock) || 0,
-    active: r.active === true || String(r.active).toUpperCase() === 'TRUE',
-    tier: String(r.tier || 'yellow'),
+  return readRatecardRows_().rows.map(r => ({
+    skuId: r.skuId,
+    category: r.category,
+    productName: r.productName,
+    grammageG: r.grammageG,
+    mrpInr: r.mrpInr,
+    shelfLifeDays: r.shelfLifeDays,
+    currentStock: r.currentStock,
+    active: r.active,
+    tier: r.tier,
   }));
 }
 
@@ -231,10 +464,16 @@ function getFulfillmentLog_() {
 
 // ── Writes ──────────────────────────────────────────────────────────────
 
-function setInventoryField_(skuId, column, value) {
-  const row = readTab_(TAB_INVENTORY).filter(r => String(r.sku_id) === skuId)[0];
+function setInventoryField_(skuId, field, value) {
+  const key = field === 'current_stock' ? 'stock' : field; // 'active' | 'tier' already match
+  if (['stock', 'active', 'tier'].indexOf(key) === -1) throw new Error('Unknown column ' + field);
+
+  const { rows } = readRatecardRows_();
+  const row = rows.filter(r => r.skuId === skuId)[0];
   if (!row) throw new Error('Unknown SKU ' + skuId);
-  writeCell_(TAB_INVENTORY, row.__row, column, value);
+
+  const colIndex = resolveRatecardColumn_(row.sheet, row.fields[key]);
+  row.sheet.getRange(row.__row, colIndex).setValue(value);
   return getInventory_().filter(i => i.skuId === skuId)[0];
 }
 
@@ -247,15 +486,15 @@ function commitOrder_(accountId, lineItems) {
   const wanted = (lineItems || []).filter(li => Number(li.qty) > 0);
   if (wanted.length === 0) throw new Error('Add at least one item before committing');
 
-  const inventoryRows = readTab_(TAB_INVENTORY);
+  const { rows } = readRatecardRows_();
   const bySku = {};
-  inventoryRows.forEach(r => { bySku[String(r.sku_id)] = r; });
+  rows.forEach(r => { bySku[r.skuId] = r; });
 
   wanted.forEach(li => {
     const row = bySku[li.skuId];
     if (!row) throw new Error('Unknown SKU ' + li.skuId);
-    if (Number(li.qty) > Number(row.current_stock)) {
-      throw new Error('Only ' + Number(row.current_stock) + ' available for ' + row.product_name);
+    if (Number(li.qty) > row.currentStock) {
+      throw new Error('Only ' + row.currentStock + ' available for ' + row.productName);
     }
   });
 
@@ -264,7 +503,8 @@ function commitOrder_(accountId, lineItems) {
 
   wanted.forEach(li => {
     const row = bySku[li.skuId];
-    writeCell_(TAB_INVENTORY, row.__row, 'current_stock', Number(row.current_stock) - Number(li.qty));
+    const colIndex = resolveRatecardColumn_(row.sheet, row.fields.stock);
+    row.sheet.getRange(row.__row, colIndex).setValue(row.currentStock - Number(li.qty));
   });
 
   appendRows_(TAB_ORDERS, [{
@@ -283,7 +523,7 @@ function commitOrder_(accountId, lineItems) {
     request_id: requestId,
     sku_id: li.skuId,
     qty: Number(li.qty),
-    unit_mrp_snapshot: Number(bySku[li.skuId].mrp_inr),
+    unit_mrp_snapshot: Number(bySku[li.skuId].mrpInr),
   })));
 
   return getRequests_(accountId).filter(r => r.requestId === requestId)[0];
@@ -300,6 +540,38 @@ function pushOrder_(requestId) {
 }
 
 /**
+ * A committed-but-not-yet-pushed order is just a reservation - cancelling it
+ * undoes that reservation completely rather than leaving a declined-looking
+ * record behind, since Ops never saw it in the first place.
+ */
+function cancelOrder_(requestId) {
+  const orderRow = readTab_(TAB_ORDERS).filter(r => String(r.request_id) === requestId)[0];
+  if (!orderRow) throw new Error('Unknown request ' + requestId);
+  if (String(orderRow.status) !== 'committed') throw new Error('Only a committed order can be cancelled');
+
+  const lines = readTab_(TAB_ORDER_LINES).filter(li => String(li.request_id) === requestId);
+  const { rows } = readRatecardRows_();
+  const bySku = {};
+  rows.forEach(r => { bySku[r.skuId] = r; });
+  releaseStock_(lines, bySku);
+
+  // Highest row number first so deleting one line doesn't shift the next one out from under us.
+  const orderLinesSheet = sheet_(TAB_ORDER_LINES);
+  lines.map(li => li.__row).sort((a, b) => b - a).forEach(rowNum => orderLinesSheet.deleteRow(rowNum));
+  sheet_(TAB_ORDERS).deleteRow(orderRow.__row);
+}
+
+/** Puts every reserved unit in `lines` back onto its ratecard row. */
+function releaseStock_(lines, bySku) {
+  lines.forEach(li => {
+    const row = bySku[String(li.sku_id)];
+    if (!row) return;
+    const colIndex = resolveRatecardColumn_(row.sheet, row.fields.stock);
+    row.sheet.getRange(row.__row, colIndex).setValue(row.currentStock + Number(li.qty));
+  });
+}
+
+/**
  * Approve keeps the stock deducted and writes the fulfillment rows.
  * Decline puts every reserved unit back. No partial approval.
  */
@@ -308,16 +580,11 @@ function decideRequest_(requestId, decidedBy, approve, decisionNote) {
   if (!orderRow) throw new Error('Unknown request ' + requestId);
 
   const lines = readTab_(TAB_ORDER_LINES).filter(li => String(li.request_id) === requestId);
-  const inventoryRows = readTab_(TAB_INVENTORY);
+  const { rows } = readRatecardRows_();
   const bySku = {};
-  inventoryRows.forEach(r => { bySku[String(r.sku_id)] = r; });
+  rows.forEach(r => { bySku[r.skuId] = r; });
 
-  if (!approve) {
-    lines.forEach(li => {
-      const row = bySku[String(li.sku_id)];
-      if (row) writeCell_(TAB_INVENTORY, row.__row, 'current_stock', Number(row.current_stock) + Number(li.qty));
-    });
-  }
+  if (!approve) releaseStock_(lines, bySku);
 
   const decidedAt = new Date().toISOString();
   writeCell_(TAB_ORDERS, orderRow.__row, 'status', approve ? 'approved' : 'declined');
@@ -336,7 +603,7 @@ function decideRequest_(requestId, decidedBy, approve, decisionNote) {
         contact_name: account.contact_name || '',
         contact_phone: account.contact_phone || '',
         category: item.category || '',
-        product_name: item.product_name || li.sku_id,
+        product_name: item.productName || li.sku_id,
         qty: Number(li.qty),
         unit_mrp: Number(li.unit_mrp_snapshot),
         line_total: Number(li.qty) * Number(li.unit_mrp_snapshot),
@@ -351,66 +618,7 @@ function decideRequest_(requestId, decidedBy, approve, decisionNote) {
 
 // ── One-time setup ──────────────────────────────────────────────────────
 
-/**
- * Finds the existing ratecard tab already sitting in this spreadsheet
- * (Category | Product Name | Grammage (g) | MRP (INR) | Shelf Life, with
- * section-banner rows like "Best Sellers" and blank spacer rows mixed in)
- * and pulls out only the real product rows. This is what "the same sheet"
- * means: the app's Inventory tab is seeded from the ratecard that's
- * already here, not from a bundled snapshot.
- */
-function extractCatalogFromRatecard_() {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const ownTabNames = Object.keys(COLUMNS);
-
-  const candidate = spreadsheet.getSheets().find(sheet => {
-    if (ownTabNames.indexOf(sheet.getName()) !== -1) return false;
-    const header = sheet.getRange(1, 1, 1, Math.min(5, sheet.getLastColumn() || 1)).getValues()[0] || [];
-    const normalized = header.map(h => String(h).trim().toLowerCase());
-    return normalized[0] === 'category' && normalized[1] && normalized[1].indexOf('product') !== -1;
-  });
-
-  if (!candidate) return [];
-
-  const values = candidate.getDataRange().getValues();
-  const items = [];
-  const seenIds = {};
-
-  for (let i = 1; i < values.length; i++) {
-    const [category, productName, grammage, mrp, shelfLife] = values[i];
-    // Section-banner rows ("Best Sellers") and blank spacer rows have no
-    // numeric grammage/MRP/shelf life - that's what distinguishes a real
-    // product row here, not just a non-empty column A.
-    if (!category || !productName) continue;
-    if (grammage === '' || mrp === '' || shelfLife === '') continue;
-    if (isNaN(Number(grammage)) || isNaN(Number(mrp)) || isNaN(Number(shelfLife))) continue;
-
-    let skuId = slugify_(category + '-' + productName);
-    let suffix = 2;
-    while (seenIds[skuId]) { skuId = slugify_(category + '-' + productName) + '-' + suffix++; }
-    seenIds[skuId] = true;
-
-    items.push({
-      skuId: skuId,
-      category: String(category).trim(),
-      productName: String(productName).trim(),
-      grammageG: Number(grammage),
-      mrpInr: Number(mrp),
-      shelfLifeDays: Number(shelfLife),
-    });
-  }
-
-  return items;
-}
-
-function slugify_(text) {
-  return String(text)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-/** Creates any missing tabs, writes headers, and seeds catalog + accounts. */
+/** Creates any missing operational tabs and writes their headers. Never touches the ratecard tab. */
 function setupSheets() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
 
@@ -422,30 +630,17 @@ function setupSheets() {
     sheet.setFrozenRows(1);
   });
 
-  if (sheet_(TAB_INVENTORY).getLastRow() < 2) {
-    const extracted = extractCatalogFromRatecard_();
-    const catalog = extracted.length > 0 ? extracted : CATALOG;
-    if (extracted.length === 0) {
-      Logger.log('No ratecard tab found in this spreadsheet - falling back to the bundled Catalog.gs snapshot. ' +
-        'If your ratecard tab uses different header names, seed Inventory manually or adjust extractCatalogFromRatecard_().');
-    }
-    appendRows_(TAB_INVENTORY, catalog.map(item => ({
-      sku_id: item.skuId,
-      category: item.category,
-      product_name: item.productName,
-      grammage_g: item.grammageG,
-      mrp_inr: item.mrpInr,
-      shelf_life_days: item.shelfLifeDays,
-      current_stock: 0,
-      active: true,
-      tier: 'yellow',
-    })));
-  }
-
   if (sheet_(TAB_ACCOUNTS).getLastRow() < 2) {
     appendRows_(TAB_ACCOUNTS, [
       { account_id: 'acct-blue-orchard', company_name: 'Blue Orchard Mart', contact_name: 'Rahul Mehta', contact_email: 'rahul@blueorchardmart.example', contact_phone: '+91 98200 11223' },
       { account_id: 'acct-corner-cafe', company_name: 'Corner Cafe Collective', contact_name: 'Ayesha Khan', contact_email: 'ayesha@cornercafe.example', contact_phone: '+91 98100 44556' },
     ]);
+  }
+
+  try {
+    const ratecards = findRatecardSheets_();
+    Logger.log('Using as Inventory: ' + ratecards.map(s => s.getName()).join(', '));
+  } catch (err) {
+    Logger.log('Warning: ' + err.message + ' getInventory will fail until one exists.');
   }
 }

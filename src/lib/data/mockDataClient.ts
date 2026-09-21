@@ -168,6 +168,24 @@ export const mockDataClient: DataClient = {
     return tick(request);
   },
 
+  async cancelOrder(requestId) {
+    const request = db.requests.find((r) => r.requestId === requestId);
+    if (!request) throw new Error(`Unknown request ${requestId}`);
+    if (request.status !== "committed") throw new Error("Only a committed order can be cancelled");
+
+    for (const li of request.lineItems) {
+      const item = db.inventory.find((i) => i.skuId === li.skuId);
+      if (item) {
+        item.currentStock += li.qty;
+        eventBus.emit("InventoryUpdated", { item });
+      }
+    }
+
+    db.requests = db.requests.filter((r) => r.requestId !== requestId);
+    saveDB(db);
+    await tick(undefined);
+  },
+
   async getRequests() {
     return tick([...db.requests]);
   },
