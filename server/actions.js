@@ -361,10 +361,10 @@ export async function decideProductRequests(opsId, skuId, decidedBy, status, hol
 }
 
 const TIER_FILL_COLORS = {
-  green: { red: 0.851, green: 0.918, blue: 0.827 },
-  yellow: { red: 1, green: 0.949, blue: 0.8 },
-  orange: { red: 0.988, green: 0.898, blue: 0.804 },
-  red: { red: 0.957, green: 0.8, blue: 0.8 },
+  green: { red: 0.702, green: 0.851, blue: 0.651 },
+  yellow: { red: 1, green: 0.851, blue: 0.4 },
+  orange: { red: 0.949, green: 0.702, blue: 0.349 },
+  red: { red: 0.902, green: 0.549, blue: 0.549 },
 };
 
 /**
