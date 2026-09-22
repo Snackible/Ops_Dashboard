@@ -310,34 +310,50 @@ export function CatalogPage() {
       ) : filtered.length === 0 ? (
         <EmptyState title="No products match" body="Try a different search term, tier, or category." />
       ) : (
-        <div className="space-y-4 pb-20">
+        <div className="space-y-5 pb-20">
           {(tierFilter === "all" ? TIER_ORDER : [tierFilter]).map((tier) => {
-            const tierItems = filtered
-              .filter((i) => i.tier === tier)
-              // Category first so same-category items cluster together in
-              // the grid instead of being interleaved by stock level; stock
-              // descending still breaks ties within a category.
-              .sort((a, b) => a.category.localeCompare(b.category) || b.currentStock - a.currentStock);
+            const tierItems = filtered.filter((i) => i.tier === tier).sort((a, b) => b.currentStock - a.currentStock);
             if (tierItems.length === 0) return null;
             const c = TIER_CONFIG[tier];
+
+            // Grouped by category (each gets its own header + mini-grid)
+            // instead of one flat sorted grid - a category with fewer items
+            // than a full row otherwise bleeds into the next category's row
+            // since CSS grid auto-flow doesn't know where one category ends.
+            const byCategory = new Map<string, InventoryItem[]>();
+            for (const item of tierItems) {
+              const list = byCategory.get(item.category) ?? [];
+              list.push(item);
+              byCategory.set(item.category, list);
+            }
+
             return (
               <div key={tier}>
                 {tierFilter === "all" && (
-                  <div className="mb-1.5 flex items-center gap-1.5 px-1">
+                  <div className="mb-2 flex items-center gap-1.5 px-1">
                     <span className={`h-2 w-2 rounded-full ${c.solid}`} />
                     <span className="font-mono text-[10.5px] uppercase tracking-wide text-ink-faint">
                       {c.label} · {tierItems.length}
                     </span>
                   </div>
                 )}
-                <div className="grid grid-cols-1 items-start gap-2 lg:grid-cols-2 xl:grid-cols-3">
-                  {tierItems.map((item) => (
-                    <CatalogRow
-                      key={item.skuId}
-                      item={item}
-                      qty={cart[item.skuId] ?? 0}
-                      onChange={(qty) => setQty(item.skuId, qty)}
-                    />
+                <div className="space-y-3">
+                  {Array.from(byCategory.entries()).map(([cat, catItems]) => (
+                    <div key={cat}>
+                      <p className="mb-1 px-1 font-mono text-[10px] uppercase tracking-wide text-ink-faint">
+                        {cat} · {catItems.length}
+                      </p>
+                      <div className="grid grid-cols-1 items-start gap-2 lg:grid-cols-2 xl:grid-cols-3">
+                        {catItems.map((item) => (
+                          <CatalogRow
+                            key={item.skuId}
+                            item={item}
+                            qty={cart[item.skuId] ?? 0}
+                            onChange={(qty) => setQty(item.skuId, qty)}
+                          />
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
