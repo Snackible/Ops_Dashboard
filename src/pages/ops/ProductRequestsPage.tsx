@@ -68,7 +68,10 @@ function GroupCard({
         {group.requests.map((r) => (
           <div key={r.requestId} className="py-2 text-sm">
             <div className="flex items-center justify-between gap-4">
-              <span>{accountsById.get(r.accountId)?.companyName ?? r.accountId}</span>
+              <span>
+                {accountsById.get(r.accountId)?.companyName ?? r.accountId}
+                {r.linkedRequestId && <span className="font-mono text-[11px] text-ink-faint"> · order {r.linkedRequestId}</span>}
+              </span>
               <span className="font-mono tabular-nums text-ink-soft">× {r.qty}</span>
             </div>
             {r.note && <p className="mt-0.5 text-[12px] text-ink-faint">"{r.note}"</p>}

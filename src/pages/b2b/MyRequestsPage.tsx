@@ -88,7 +88,10 @@ export function MyRequestsPage() {
                 {req.lineItems.map((li) => (
                   <div key={li.lineItemId} className="flex items-center justify-between py-2 text-sm">
                     <span>{bySku.get(li.skuId)?.productName ?? li.skuId}</span>
-                    <span className="font-mono tabular-nums text-ink-soft">× {li.qty}</span>
+                    <span className="font-mono tabular-nums text-ink-soft">
+                      × {li.qty}
+                      {li.backorderQty > 0 && <span className="text-warning"> ({li.backorderQty} pending production)</span>}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -123,6 +126,7 @@ export function MyRequestsPage() {
                       <p className="truncate text-[13px] font-medium">{item?.productName ?? r.skuId}</p>
                       <p className="font-mono text-[10.5px] text-ink-faint">
                         × {r.qty} · {new Date(r.createdAt).toLocaleString()}
+                        {r.linkedRequestId && ` · part of ${r.linkedRequestId}`}
                       </p>
                     </div>
                     <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 font-mono text-[11px] font-medium ${c.classes}`}>

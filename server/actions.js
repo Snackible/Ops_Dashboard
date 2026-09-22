@@ -86,6 +86,7 @@ function buildRequests(orderRows, lineRows, accountId) {
         .map((li) => ({
           lineItemId: String(li.line_item_id), skuId: String(li.sku_id),
           qty: Number(li.qty), unitMrpSnapshot: Number(li.unit_mrp_snapshot),
+          backorderQty: Number(li.backorder_qty) || 0,
         })),
     }));
 }
@@ -113,6 +114,7 @@ function toProductRequest(r) {
     createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
     decidedAt: isoOrNull(r.decided_at), decidedBy: r.decided_by ? String(r.decided_by) : null,
     holdUntil: isoOrNull(r.hold_until),
+    linkedRequestId: r.linked_request_id ? String(r.linked_request_id) : null,
   };
 }
 
@@ -176,22 +178,28 @@ export async function commitOrder(ratecardId, opsId, accountId, lineItems, reque
   const { rows, sheetMeta } = await readRatecardRows(ratecardId, MANAGED_TITLES);
   const bySku = new Map(rows.map((r) => [r.skuId, r]));
 
-  wanted.forEach((li) => {
+  // Only qty - backorderQty is ever reserved from stock; the rest is the
+  // shortfall a linked ProductRequest tracks below, so the order (and any
+  // fully-available lines in it) isn't held up waiting on production.
+  const withReserve = wanted.map((li) => {
     const row = bySku.get(li.skuId);
     if (!row) throw new Error("Unknown SKU " + li.skuId);
-    if (Number(li.qty) > row.currentStock) throw new Error(`Only ${row.currentStock} available for ${row.productName}`);
+    const backorderQty = Number(li.backorderQty) || 0;
+    const reserveQty = Number(li.qty) - backorderQty;
+    if (reserveQty > row.currentStock) throw new Error(`Only ${row.currentStock} available for ${row.productName}`);
+    return { ...li, backorderQty, reserveQty, row };
   });
 
-  for (const li of wanted) {
-    const row = bySku.get(li.skuId);
-    const colIndex = await resolveRatecardColumn(sheetMeta, row, row.fields.stock);
-    await writeRange(row.spreadsheetId, row.title, `${colLetter(colIndex)}${row.row}`, [[row.currentStock - Number(li.qty)]]);
-    row.currentStock -= Number(li.qty);
+  for (const li of withReserve) {
+    if (li.reserveQty === 0) continue;
+    const colIndex = await resolveRatecardColumn(sheetMeta, li.row, li.row.fields.stock);
+    await writeRange(li.row.spreadsheetId, li.row.title, `${colLetter(colIndex)}${li.row.row}`, [[li.row.currentStock - li.reserveQty]]);
+    li.row.currentStock -= li.reserveQty;
   }
 
   const requestId = newId("req");
   const createdAt = new Date().toISOString();
-  const withLineIds = wanted.map((li) => ({ ...li, lineItemId: newId("line") }));
+  const withLineIds = withReserve.map((li) => ({ ...li, lineItemId: newId("line") }));
 
   await appendRows(opsId, TAB_ORDERS, [{
     request_id: requestId, account_id: accountId, status: "committed", created_at: createdAt,
@@ -199,14 +207,22 @@ export async function commitOrder(ratecardId, opsId, accountId, lineItems, reque
   }]);
   await appendRows(opsId, TAB_ORDER_LINES, withLineIds.map((li) => ({
     line_item_id: li.lineItemId, request_id: requestId, sku_id: li.skuId,
-    qty: Number(li.qty), unit_mrp_snapshot: Number(bySku.get(li.skuId).mrpInr),
+    qty: Number(li.qty), unit_mrp_snapshot: Number(li.row.mrpInr), backorder_qty: li.backorderQty,
   })));
+
+  const backordered = withLineIds.filter((li) => li.backorderQty > 0);
+  if (backordered.length > 0) {
+    await appendRows(opsId, TAB_PRODUCT_REQUESTS, backordered.map((li) => ({
+      request_id: newId("preq"), account_id: accountId, sku_id: li.skuId, qty: li.backorderQty, note: "",
+      status: "pending", created_at: createdAt, decided_at: "", decided_by: "", hold_until: "", linked_request_id: requestId,
+    })));
+  }
 
   return {
     requestId, accountId, status: "committed", createdAt,
     submittedAt: null, decidedAt: null, decidedBy: null, decisionNote: null, requestedByName: requestedByName || null,
     lineItems: withLineIds.map((li) => ({
-      lineItemId: li.lineItemId, skuId: li.skuId, qty: Number(li.qty), unitMrpSnapshot: Number(bySku.get(li.skuId).mrpInr),
+      lineItemId: li.lineItemId, skuId: li.skuId, qty: Number(li.qty), unitMrpSnapshot: Number(li.row.mrpInr), backorderQty: li.backorderQty,
     })),
   };
 }
@@ -230,8 +246,12 @@ async function releaseStock(sheetMeta, rowsBySku, lines) {
   for (const li of lines) {
     const row = rowsBySku.get(String(li.sku_id));
     if (!row) continue;
+    // Only qty - backorder_qty was ever reserved (see commitOrder) - that's
+    // all there is to give back.
+    const reserved = Number(li.qty) - (Number(li.backorder_qty) || 0);
+    if (reserved === 0) continue;
     const colIndex = await resolveRatecardColumn(sheetMeta, row, row.fields.stock);
-    const next = row.currentStock + Number(li.qty);
+    const next = row.currentStock + reserved;
     await writeRange(row.spreadsheetId, row.title, `${colLetter(colIndex)}${row.row}`, [[next]]);
     row.currentStock = next;
   }
@@ -302,10 +322,10 @@ export async function requestProduct(ratecardId, opsId, accountId, skuId, qty, n
   const createdAt = new Date().toISOString();
   await appendRows(opsId, TAB_PRODUCT_REQUESTS, [{
     request_id: requestId, account_id: accountId, sku_id: skuId, qty: Number(qty), note: note || "",
-    status: "pending", created_at: createdAt, decided_at: "", decided_by: "", hold_until: "",
+    status: "pending", created_at: createdAt, decided_at: "", decided_by: "", hold_until: "", linked_request_id: "",
   }]);
 
-  return { requestId, accountId, skuId, qty: Number(qty), note: note || null, status: "pending", createdAt, decidedAt: null, decidedBy: null, holdUntil: null };
+  return { requestId, accountId, skuId, qty: Number(qty), note: note || null, status: "pending", createdAt, decidedAt: null, decidedBy: null, holdUntil: null, linkedRequestId: null };
 }
 
 export async function decideProductRequests(opsId, skuId, decidedBy, status, holdUntil) {

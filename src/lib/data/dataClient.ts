@@ -32,14 +32,16 @@ export interface DataClient {
   getAccount(accountId: string): Promise<B2BAccount | undefined>;
 
   /**
-   * Creates a new order in one shot from a locally-built cart, reserving
-   * every line item's qty from `InventoryItem.currentStock` atomically —
-   * either the whole order commits or none of it does. An account can hold
-   * several committed orders at once; this always creates a new one.
+   * Creates a new order in one shot from a locally-built cart. Each line
+   * reserves `qty - backorderQty` from `InventoryItem.currentStock`; when a
+   * line's backorderQty is greater than 0, a linked ProductRequest is
+   * created alongside it for that shortfall (see ProductRequest.linkedRequestId),
+   * and the order can't be approved until that's resolved. An account can
+   * hold several committed orders at once; this always creates a new one.
    */
   commitOrder(
     accountId: string,
-    lineItems: { skuId: string; qty: number }[],
+    lineItems: { skuId: string; qty: number; backorderQty: number }[],
     requestedByName: string | null
   ): Promise<StockRequest>;
 

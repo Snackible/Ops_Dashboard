@@ -6,17 +6,19 @@ import { notificationStore } from "../../lib/integrations/notificationStore";
 import { SkeletonRow } from "../../components/Skeleton";
 import { EmptyState } from "../../components/EmptyState";
 import { RefreshButton } from "../../components/RefreshButton";
-import type { B2BAccount, InventoryItem, StockRequest } from "../../lib/types";
+import type { B2BAccount, InventoryItem, ProductRequest, StockRequest } from "../../lib/types";
 
 function RequestCard({
   request,
   account,
   inventory,
+  pendingProduction,
   onDecided,
 }: {
   request: StockRequest;
   account: B2BAccount | undefined;
   inventory: Map<string, InventoryItem>;
+  pendingProduction: ProductRequest[];
   onDecided: () => void;
 }) {
   const { user } = useAuth();
@@ -24,9 +26,11 @@ function RequestCard({
   const [busy, setBusy] = useState<"approve" | "decline" | null>(null);
 
   const orderTotal = request.lineItems.reduce((sum, li) => sum + li.qty * li.unitMrpSnapshot, 0);
+  const blockedByProduction = pendingProduction.length > 0;
 
   async function decide(approve: boolean) {
     if (!user) return;
+    if (approve && blockedByProduction) return;
     if (!approve && note.trim() === "") return;
     setBusy(approve ? "approve" : "decline");
     try {
@@ -64,11 +68,20 @@ function RequestCard({
           return (
             <div key={li.lineItemId} className="flex items-center justify-between gap-4 py-2 text-sm">
               <span>{item?.productName ?? li.skuId}</span>
-              <span className="font-mono tabular-nums text-ink-soft">{li.qty} committed</span>
+              <span className="font-mono tabular-nums text-ink-soft">
+                {li.qty} committed
+                {li.backorderQty > 0 && <span className="text-warning"> ({li.backorderQty} pending production)</span>}
+              </span>
             </div>
           );
         })}
       </div>
+
+      {blockedByProduction && (
+        <p className="mt-3 text-[12.5px] text-warning">
+          Waiting on production — resolve the linked product request{pendingProduction.length === 1 ? "" : "s"} first.
+        </p>
+      )}
 
       <textarea
         value={note}
@@ -89,7 +102,8 @@ function RequestCard({
         </button>
         <button
           onClick={() => decide(true)}
-          disabled={busy !== null}
+          disabled={busy !== null || blockedByProduction}
+          title={blockedByProduction ? "Resolve the linked production request first" : undefined}
           className="ml-auto rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
         >
           {busy === "approve" ? "Approving…" : "Approve"}
@@ -104,7 +118,7 @@ export function QueuePage() {
   // liveStore.ts. The background poller keeps `requests` current; a manual
   // refresh (or a decision made right here) is what updates it otherwise.
   // Navigating to/from this page never fires a network call on its own.
-  const { requests, accounts, inventory, requestsReady, accountsReady, inventoryReady } = useLiveStore();
+  const { requests, accounts, inventory, productRequests, requestsReady, accountsReady, inventoryReady } = useLiveStore();
   const loading = !requestsReady || !accountsReady || !inventoryReady;
 
   const pending = useMemo(
@@ -144,6 +158,9 @@ export function QueuePage() {
             request={req}
             account={accountsById.get(req.accountId)}
             inventory={inventoryBySku}
+            pendingProduction={productRequests.filter(
+              (pr) => pr.linkedRequestId === req.requestId && (pr.status === "pending" || pr.status === "on_hold")
+            )}
             onDecided={() => {
               liveStore.refreshRequests();
               // Approving writes a fulfillment row - keep History in sync if it's already been loaded this session (see liveStore.ts).

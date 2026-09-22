@@ -48,7 +48,11 @@ function CatalogRow({
         <p className="mt-0.5 font-mono text-[10.5px] tabular-nums text-ink-faint">
           {item.category} · {item.grammageG}g · ₹{item.mrpInr}
         </p>
-        {overStock && <p className="mt-0.5 text-[10.5px] text-warning">Not enough in stock — this will be sent to Ops as a request.</p>}
+        {overStock && (
+          <p className="mt-0.5 text-[10.5px] text-warning">
+            {item.currentStock} available now, {qty - item.currentStock} needs production.
+          </p>
+        )}
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         <button
@@ -93,6 +97,7 @@ export function CatalogPage() {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [stage, setStage] = useState<Stage>("browsing");
   const [busy, setBusy] = useState(false);
+  const [splitOrder, setSplitOrder] = useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -110,54 +115,73 @@ export function CatalogPage() {
     [items, tierFilter, category, search]
   );
 
-  const cartLines = Object.entries(cart).filter(([, qty]) => qty > 0);
-  const itemCount = cartLines.length;
-  const cartTotal = cartLines.reduce((sum, [skuId, qty]) => {
-    const item = items.find((i) => i.skuId === skuId);
-    return sum + qty * (item?.mrpInr ?? 0);
-  }, 0);
+  interface CartLine {
+    skuId: string;
+    qty: number;
+    item: InventoryItem;
+    backorderQty: number;
+  }
 
-  // A line commits (reserves stock) if enough is available; otherwise the
-  // whole line goes to Ops as a product request instead - no partial split
-  // of a single line between the two, same "no partial approval" spirit as
-  // the rest of the order flow.
-  const toCommit = cartLines.filter(([skuId, qty]) => qty <= (items.find((i) => i.skuId === skuId)?.currentStock ?? 0));
-  const toRequest = cartLines.filter(([skuId, qty]) => qty > (items.find((i) => i.skuId === skuId)?.currentStock ?? 0));
+  const cartLines: CartLine[] = Object.entries(cart)
+    .filter(([, qty]) => qty > 0)
+    .map(([skuId, qty]) => {
+      const item = items.find((i) => i.skuId === skuId)!;
+      return { skuId, qty, item, backorderQty: Math.max(0, qty - item.currentStock) };
+    });
+  const itemCount = cartLines.length;
+  const cartTotal = cartLines.reduce((sum, l) => sum + l.qty * l.item.mrpInr, 0);
+
+  const fullyAvailable = cartLines.filter((l) => l.backorderQty === 0);
+  const needsProduction = cartLines.filter((l) => l.backorderQty > 0);
 
   function setQty(skuId: string, qty: number) {
     const clamped = Math.max(0, Math.floor(qty) || 0);
     setCart((prev) => ({ ...prev, [skuId]: clamped }));
   }
 
+  // No split: everything goes into one order, so it can't ship until any
+  // backordered line is also resolved. Split: fully-available lines form
+  // their own order (ships now), and each backordered line gets its own
+  // order too - so one slow-to-produce item doesn't hold up the rest.
+  function buildOrderGroups(): CartLine[][] {
+    if (needsProduction.length === 0) return [cartLines];
+    if (!splitOrder) return [cartLines];
+    const groups: CartLine[][] = [];
+    if (fullyAvailable.length > 0) groups.push(fullyAvailable);
+    for (const line of needsProduction) groups.push([line]);
+    return groups;
+  }
+
   async function submitOrder() {
     if (!user?.accountId) return;
     setBusy(true);
     try {
-      if (toCommit.length > 0) {
+      const groups = buildOrderGroups();
+      for (const group of groups) {
         await dataClient.commitOrder(
           user.accountId,
-          toCommit.map(([skuId, qty]) => ({ skuId, qty })),
+          group.map((l) => ({ skuId: l.skuId, qty: l.qty, backorderQty: l.backorderQty })),
           user.name
         );
       }
-      await Promise.all(toRequest.map(([skuId, qty]) => dataClient.requestProduct(user.accountId!, skuId, qty, null)));
+
       // Committed/My Requests read the shared store now (see liveStore.ts) -
       // refresh the slices this order just touched so they show up there
       // immediately instead of waiting for the next poll tick.
-      if (toCommit.length > 0) {
-        liveStore.refreshInventory();
-        liveStore.refreshRequests();
-      }
-      if (toRequest.length > 0) liveStore.refreshProductRequests();
+      liveStore.refreshInventory();
+      liveStore.refreshRequests();
+      if (needsProduction.length > 0) liveStore.refreshProductRequests();
 
-      const parts: string[] = [];
-      if (toCommit.length > 0) parts.push("reserved from stock — push it from the Committed tab");
-      if (toRequest.length > 0) parts.push("sent to Ops as a request since there wasn't enough in stock");
-      notificationStore.push({ kind: "success", title: "Order submitted", body: parts.join("; ") + "." });
+      notificationStore.push({
+        kind: "success",
+        title: groups.length === 1 ? "Order submitted" : `${groups.length} orders submitted`,
+        body: "Reserved from stock — push from the Committed tab.",
+      });
 
       setCart({});
+      setSplitOrder(false);
       setStage("browsing");
-      navigate(toCommit.length > 0 ? "/b2b/committed" : "/b2b/requests");
+      navigate("/b2b/committed");
     } catch (err) {
       notificationStore.push({
         kind: "danger",
@@ -170,64 +194,54 @@ export function CatalogPage() {
   }
 
   if (stage === "preview") {
-    const buttonLabel =
-      toRequest.length === 0 ? "Commit order" : toCommit.length === 0 ? "Send request" : "Commit & request";
-    const busyLabel =
-      toRequest.length === 0 ? "Committing…" : toCommit.length === 0 ? "Sending…" : "Submitting…";
+    const groups = buildOrderGroups();
+    const showSplitToggle = needsProduction.length > 0 && fullyAvailable.length > 0;
 
     return (
       <div className="mx-auto max-w-xl">
         <h1 className="font-display text-2xl font-semibold">Review order</h1>
-        <p className="mb-6 text-sm text-ink-soft">Nothing is reserved yet — committing locks in these quantities.</p>
 
-        {toCommit.length > 0 && (
-          <div className="mb-4">
-            <p className="mb-1.5 font-mono text-[10.5px] uppercase tracking-wide text-ink-faint">Committing now</p>
-            <div className="divide-y divide-line rounded-xl border border-line bg-paper-raised">
-              {toCommit.map(([skuId, qty]) => {
-                const item = items.find((i) => i.skuId === skuId);
-                return (
-                  <div key={skuId} className="flex items-center justify-between px-4 py-3 text-sm">
+        {showSplitToggle && (
+          <label className="mb-4 flex items-center gap-2 rounded-md border border-line bg-paper-raised px-3 py-2.5 text-[13px]">
+            <input type="checkbox" checked={splitOrder} onChange={(e) => setSplitOrder(e.target.checked)} className="h-4 w-4 accent-accent" />
+            <span>Split into separate orders — ships what's available now, production goes as its own order</span>
+          </label>
+        )}
+
+        {groups.map((group, i) => {
+          const total = group.reduce((sum, l) => sum + l.qty * l.item.mrpInr, 0);
+          const hasBackorder = group.some((l) => l.backorderQty > 0);
+          return (
+            <div key={i} className="mb-4">
+              {groups.length > 1 && (
+                <p className="mb-1.5 font-mono text-[10.5px] uppercase tracking-wide text-ink-faint">Order {i + 1}</p>
+              )}
+              <div className="divide-y divide-line rounded-xl border border-line bg-paper-raised">
+                {group.map((l) => (
+                  <div key={l.skuId} className="flex items-center justify-between px-4 py-3 text-sm">
                     <div>
-                      <p className="font-medium">{item?.productName ?? skuId}</p>
+                      <p className="font-medium">{l.item.productName}</p>
                       <p className="font-mono text-[11.5px] tabular-nums text-ink-faint">
-                        {qty} × ₹{item?.mrpInr ?? 0}
+                        {l.qty} × ₹{l.item.mrpInr}
+                        {l.backorderQty > 0 && (
+                          <span className="text-warning"> · {l.backorderQty} needs production</span>
+                        )}
                       </p>
                     </div>
-                    <p className="font-mono tabular-nums">₹{qty * (item?.mrpInr ?? 0)}</p>
+                    <p className="font-mono tabular-nums">₹{l.qty * l.item.mrpInr}</p>
                   </div>
-                );
-              })}
-              <div className="flex items-center justify-between px-4 py-3">
-                <p className="font-semibold">Total</p>
-                <p className="font-mono text-base font-semibold tabular-nums">
-                  ₹{toCommit.reduce((sum, [skuId, qty]) => sum + qty * (items.find((i) => i.skuId === skuId)?.mrpInr ?? 0), 0)}
-                </p>
+                ))}
+                <div className="flex items-center justify-between px-4 py-3">
+                  <p className="font-semibold">Total</p>
+                  <p className="font-mono text-base font-semibold tabular-nums">₹{total}</p>
+                </div>
               </div>
+              {hasBackorder && (
+                <p className="mt-1.5 text-[12px] text-warning">Won't ship until the production part is approved.</p>
+              )}
             </div>
-          </div>
-        )}
-
-        {toRequest.length > 0 && (
-          <div className="mb-4">
-            <p className="mb-1.5 font-mono text-[10.5px] uppercase tracking-wide text-warning">
-              Requesting from Ops — not enough in stock
-            </p>
-            <div className="divide-y divide-line rounded-xl border border-warning bg-paper-raised">
-              {toRequest.map(([skuId, qty]) => {
-                const item = items.find((i) => i.skuId === skuId);
-                return (
-                  <div key={skuId} className="flex items-center justify-between px-4 py-3 text-sm">
-                    <p className="font-medium">{item?.productName ?? skuId}</p>
-                    <p className="font-mono text-[11.5px] tabular-nums text-ink-soft">
-                      {qty} requested · {item?.currentStock ?? 0} avail
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+          );
+        })}
 
         <div className="mt-5 flex items-center gap-2">
           <button
@@ -242,7 +256,7 @@ export function CatalogPage() {
             disabled={busy}
             className="ml-auto rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-60"
           >
-            {busy ? busyLabel : buttonLabel}
+            {busy ? "Committing…" : groups.length === 1 ? "Commit order" : `Commit ${groups.length} orders`}
           </button>
         </div>
       </div>
@@ -257,9 +271,7 @@ export function CatalogPage() {
             <h1 className="font-display text-2xl font-semibold">New Order</h1>
             <RefreshButton onRefresh={liveStore.refreshInventory} />
           </div>
-          <p className="text-sm text-ink-soft">
-            Add items, then review. In-stock quantities commit; anything over what's available gets sent to Ops as a request.
-          </p>
+          <p className="text-sm text-ink-soft">Add items, then review before committing.</p>
         </div>
         <input
           value={search}

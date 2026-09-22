@@ -162,19 +162,25 @@ export const mockDataClient: DataClient = {
     const wanted = lineItems.filter((li) => li.qty > 0);
     if (wanted.length === 0) throw new Error("Add at least one item before committing");
 
-    // Validate every line first — an order either commits whole or not at all.
+    // Validate every line first — an order either commits whole or not at
+    // all. Only qty - backorderQty is ever reserved from stock; the rest is
+    // the shortfall a linked ProductRequest tracks (see below).
     for (const li of wanted) {
       const item = findInventory(li.skuId);
-      if (li.qty > item.currentStock) {
+      const reserveQty = li.qty - (li.backorderQty || 0);
+      if (reserveQty > item.currentStock) {
         throw new Error(`Only ${item.currentStock} available for ${item.productName}`);
       }
     }
 
+    const requestId = id("req");
+    const createdAt = new Date().toISOString();
+
     const request: StockRequest = {
-      requestId: id("req"),
+      requestId,
       accountId,
       status: "committed",
-      createdAt: new Date().toISOString(),
+      createdAt,
       submittedAt: null,
       decidedAt: null,
       decidedBy: null,
@@ -182,12 +188,34 @@ export const mockDataClient: DataClient = {
       requestedByName: requestedByName || null,
       lineItems: wanted.map((li) => {
         const item = findInventory(li.skuId);
-        item.currentStock -= li.qty;
+        const backorderQty = li.backorderQty || 0;
+        const reserveQty = li.qty - backorderQty;
+        item.currentStock -= reserveQty;
         eventBus.emit("InventoryUpdated", { item });
-        return { lineItemId: id("line"), skuId: li.skuId, qty: li.qty, unitMrpSnapshot: item.mrpInr };
+        return { lineItemId: id("line"), skuId: li.skuId, qty: li.qty, unitMrpSnapshot: item.mrpInr, backorderQty };
       }),
     };
     db.requests.unshift(request);
+
+    for (const li of wanted) {
+      if (!li.backorderQty) continue;
+      const productRequest: ProductRequest = {
+        requestId: id("preq"),
+        accountId,
+        skuId: li.skuId,
+        qty: li.backorderQty,
+        note: null,
+        status: "pending",
+        createdAt,
+        decidedAt: null,
+        decidedBy: null,
+        holdUntil: null,
+        linkedRequestId: requestId,
+      };
+      db.productRequests.unshift(productRequest);
+      eventBus.emit("ProductRequestSubmitted", { request: productRequest });
+    }
+
     saveDB(db);
     return tick(request);
   },
@@ -216,7 +244,7 @@ export const mockDataClient: DataClient = {
     for (const li of request.lineItems) {
       const item = db.inventory.find((i) => i.skuId === li.skuId);
       if (item) {
-        item.currentStock += li.qty;
+        item.currentStock += li.qty - li.backorderQty;
         eventBus.emit("InventoryUpdated", { item });
       }
     }
@@ -242,7 +270,7 @@ export const mockDataClient: DataClient = {
       for (const li of request.lineItems) {
         const item = db.inventory.find((i) => i.skuId === li.skuId);
         if (item) {
-          item.currentStock += li.qty;
+          item.currentStock += li.qty - li.backorderQty;
           eventBus.emit("InventoryUpdated", { item });
         }
       }
@@ -277,6 +305,7 @@ export const mockDataClient: DataClient = {
       decidedAt: null,
       decidedBy: null,
       holdUntil: null,
+      linkedRequestId: null,
     };
     db.productRequests.unshift(request);
     saveDB(db);

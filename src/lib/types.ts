@@ -43,8 +43,11 @@ export type RequestStatus = "committed" | "pending" | "approved" | "declined";
 export interface RequestLineItem {
   lineItemId: string;
   skuId: string;
+  /** Total quantity the account asked for on this line. */
   qty: number;
   unitMrpSnapshot: number;
+  /** Portion of qty not covered by stock at commit time - 0 unless this line needed production. */
+  backorderQty: number;
 }
 
 export interface StockRequest {
@@ -82,6 +85,12 @@ export interface ProductRequest {
   decidedBy: string | null;
   /** Only meaningful when status is "on_hold". */
   holdUntil: string | null;
+  /**
+   * The StockRequest this backorder belongs to, when it was created as the
+   * production portion of an order (see CatalogPage's split option) rather
+   * than a standalone request. Null for a standalone request.
+   */
+  linkedRequestId: string | null;
 }
 
 export interface FulfillmentLogRow {
