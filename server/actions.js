@@ -54,9 +54,20 @@ export async function login(loginId, ratecardId, username, password) {
   let accountId;
   if (role === "b2b") {
     accountId = String(match.account_id || "").trim();
-    if (!accountId) throw new Error(`User "${match.username}" is set up as b2b but has no account_id - add one in the Users tab`);
-    if (!accounts.some((a) => String(a.account_id) === accountId)) {
+    if (accountId && !accounts.some((a) => String(a.account_id) === accountId)) {
       throw new Error(`User "${match.username}" has account_id "${accountId}", which doesn't match any row in Accounts`);
+    }
+    if (!accountId) {
+      // A b2b login with no account_id yet gets a bare Account row
+      // provisioned from its own name instead of blocking sign-in on a
+      // manual two-tab edit - mirrors how the login id itself is derived
+      // from the username rather than hand-entered.
+      accountId = newId("acct");
+      const companyName = match.display_name ? String(match.display_name) : String(match.username);
+      await appendRows(ratecardId, TAB_ACCOUNTS, [
+        { account_id: accountId, company_name: companyName, contact_name: "", contact_email: "", contact_phone: "" },
+      ]);
+      await writeCell(loginId, TAB_USERS, match.__row, "account_id", accountId);
     }
   }
 
