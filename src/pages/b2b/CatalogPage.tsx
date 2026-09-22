@@ -68,7 +68,7 @@ function CatalogRow({
           min={0}
           value={qty}
           onChange={(e) => onChange(Number(e.target.value))}
-          className={`w-14 rounded-md border-2 bg-paper px-1 py-1 text-center font-mono text-[13px] font-bold tabular-nums text-ink transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 ${
+          className={`w-16 rounded-md border-2 bg-paper px-1 py-1 text-center font-mono text-[13px] font-bold tabular-nums text-ink transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 ${
             overStock ? "border-warning focus:border-warning" : "border-accent/40 focus:border-accent"
           }`}
         />
