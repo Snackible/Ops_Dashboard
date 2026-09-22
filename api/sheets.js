@@ -77,8 +77,10 @@ export default async function handler(req, res) {
       case "requestProduct": data = await withLock(opsId, () => requestProduct(ratecardId, opsId, body.accountId, body.skuId, body.qty, body.note)); break;
       case "decideProductRequests": data = await withLock(opsId, () => decideProductRequests(opsId, body.skuId, body.decidedBy, body.status, body.holdUntil)); break;
 
-      // one-time admin setup - not called by the UI
-      case "addTierRowHighlighting": data = await addTierRowHighlighting(ratecardId); break;
+      // one-time admin setup - not called by the UI. Accepts an optional
+      // spreadsheetId override so it can be dry-run against a scratch copy
+      // before ever touching the real ratecard.
+      case "addTierRowHighlighting": data = await addTierRowHighlighting(body.spreadsheetId || ratecardId); break;
 
       default:
         res.status(200).json({ ok: false, error: "Unknown action: " + body.action });
