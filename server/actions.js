@@ -1,5 +1,12 @@
 import { readRatecardRows, resolveRatecardColumn } from "./lib/ratecard.js";
-import { writeRange, batchWriteRanges, colLetter } from "./lib/sheetsClient.js";
+import {
+  writeRange,
+  batchWriteRanges,
+  batchUpdateSpreadsheet,
+  getConditionalFormatRuleCounts,
+  listSheets,
+  colLetter,
+} from "./lib/sheetsClient.js";
 import {
   readManagedTabs,
   appendRows,
@@ -351,6 +358,77 @@ export async function decideProductRequests(opsId, skuId, decidedBy, status, hol
   }
 
   return pending.map(toProductRequest);
+}
+
+const TIER_FILL_COLORS = {
+  green: { red: 0.851, green: 0.918, blue: 0.827 },
+  yellow: { red: 1, green: 0.949, blue: 0.8 },
+  orange: { red: 0.988, green: 0.898, blue: 0.804 },
+  red: { red: 0.957, green: 0.8, blue: 0.8 },
+};
+
+/**
+ * One-time setup: colors each ratecard row by its Tier. Split so the base
+ * product's columns follow "Tier" and the Larger Pack columns follow
+ * "Larger Pack Tier" independently, since a single row can carry two
+ * different tiers for its two variants and can't be one solid color for
+ * both. Safe to re-run - clears each target sheet's existing conditional
+ * formats first instead of piling up duplicates on a second run.
+ */
+export async function addTierRowHighlighting(ratecardId) {
+  const sheets = await listSheets(ratecardId);
+  const byTitle = new Map(sheets.map((s) => [s.title, s.sheetId]));
+  const ruleCounts = await getConditionalFormatRuleCounts(ratecardId);
+
+  const requests = [];
+  const targetSheetIds = new Set();
+
+  function addTierRules(sheetId, colRanges, tierColLetter, startRowIndex = 1, endRowIndex = 2000) {
+    targetSheetIds.add(sheetId);
+    for (const tier of ["green", "yellow", "orange", "red"]) {
+      requests.push({
+        addConditionalFormatRule: {
+          index: 0,
+          rule: {
+            ranges: colRanges.map((c) => ({
+              sheetId, startRowIndex, endRowIndex, startColumnIndex: c.start, endColumnIndex: c.end,
+            })),
+            booleanRule: {
+              condition: { type: "CUSTOM_FORMULA", values: [{ userEnteredValue: `=$${tierColLetter}${startRowIndex + 1}="${tier}"` }] },
+              format: { backgroundColor: TIER_FILL_COLORS[tier] },
+            },
+          },
+        },
+      });
+    }
+  }
+
+  // "Standard Grammage": Category,Product Name,Grammage,MRP,Larger Pack
+  // Grammage,Larger Pack MRP,Shelf Life,Inventory,Larger Pack Current
+  // Stock,Larger Pack Tier,Tier - columns A-K, 0-based 0-10.
+  const standardId = byTitle.get("Standard Grammage");
+  if (standardId !== undefined) {
+    addTierRules(standardId, [{ start: 0, end: 4 }, { start: 6, end: 8 }, { start: 10, end: 11 }], "K");
+    addTierRules(standardId, [{ start: 4, end: 6 }, { start: 8, end: 10 }], "J");
+  }
+
+  // "One Serving Pack": Category,Product Name,Grammage,MRP,Shelf Life,
+  // Inventory,Tier - columns A-G, 0-based 0-6, no Larger Pack columns.
+  const oneServingId = byTitle.get("One Serving Pack");
+  if (oneServingId !== undefined) {
+    addTierRules(oneServingId, [{ start: 0, end: 7 }], "G");
+  }
+
+  if (requests.length === 0) throw new Error("Neither \"Standard Grammage\" nor \"One Serving Pack\" tab was found");
+
+  const deletes = [];
+  for (const sheetId of targetSheetIds) {
+    const existing = ruleCounts.get(sheetId) || 0;
+    for (let i = existing - 1; i >= 0; i--) deletes.push({ deleteConditionalFormatRule: { sheetId, index: i } });
+  }
+
+  await batchUpdateSpreadsheet(ratecardId, [...deletes, ...requests]);
+  return { sheetsUpdated: targetSheetIds.size, rulesAdded: requests.length, rulesCleared: deletes.length };
 }
 
 export { withLock };

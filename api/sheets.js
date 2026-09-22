@@ -13,6 +13,7 @@ import {
   decideRequest,
   requestProduct,
   decideProductRequests,
+  addTierRowHighlighting,
   withLock,
 } from "../server/actions.js";
 
@@ -75,6 +76,9 @@ export default async function handler(req, res) {
       case "decideRequest": data = await withLock(opsId, () => decideRequest(ratecardId, opsId, body.requestId, body.decidedBy, body.approve, body.decisionNote)); break;
       case "requestProduct": data = await withLock(opsId, () => requestProduct(ratecardId, opsId, body.accountId, body.skuId, body.qty, body.note)); break;
       case "decideProductRequests": data = await withLock(opsId, () => decideProductRequests(opsId, body.skuId, body.decidedBy, body.status, body.holdUntil)); break;
+
+      // one-time admin setup - not called by the UI
+      case "addTierRowHighlighting": data = await addTierRowHighlighting(ratecardId); break;
 
       default:
         res.status(200).json({ ok: false, error: "Unknown action: " + body.action });

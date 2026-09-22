@@ -206,6 +206,24 @@ export async function deleteRow(spreadsheetId, sheetId, row1Based) {
   );
 }
 
+/** Existing conditional-format rule count per sheetId - lets a setup script clear old rules before adding fresh ones, so re-running it doesn't pile up duplicates. */
+export async function getConditionalFormatRuleCounts(spreadsheetId) {
+  const res = await withRetry(() =>
+    sheetsApi().spreadsheets.get({ spreadsheetId, fields: "sheets(properties(sheetId),conditionalFormats)" })
+  );
+  const out = new Map();
+  for (const sheet of res.data.sheets || []) {
+    out.set(sheet.properties.sheetId, (sheet.conditionalFormats || []).length);
+  }
+  return out;
+}
+
+/** Generic passthrough for structural edits (conditional formatting, etc.) not covered by a dedicated helper above. */
+export async function batchUpdateSpreadsheet(spreadsheetId, requests) {
+  if (requests.length === 0) return;
+  await withRetry(() => sheetsApi().spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } }));
+}
+
 export function colLetter(col1Based) {
   let n = col1Based;
   let s = "";
