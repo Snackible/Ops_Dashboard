@@ -5,7 +5,7 @@ import { notificationStore } from "../../lib/integrations/notificationStore";
 import { LoadingState } from "../../components/Spinner";
 import { RefreshButton } from "../../components/RefreshButton";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
-import { isLargerPack } from "../../lib/inventory";
+import { digitFitFontSizePx, isLargerPack } from "../../lib/inventory";
 import { TierPicker } from "../../components/TierPicker";
 import type { InventoryItem, Tier } from "../../lib/types";
 
@@ -44,7 +44,8 @@ function StockInput({ value, onCommit }: { value: number; onCommit: (next: numbe
       onKeyDown={(e) => {
         if (e.key === "Enter") (e.target as HTMLInputElement).blur();
       }}
-      className="w-[4.5rem] shrink-0 rounded-md border-2 border-accent/40 bg-paper-raised px-1.5 py-1 text-center font-mono text-[13px] font-bold tabular-nums text-ink transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/50 sm:w-24 sm:px-2"
+      style={{ fontSize: `${digitFitFontSizePx(draft.length)}px` }}
+      className="w-[4.5rem] shrink-0 rounded-md border-2 border-accent/40 bg-paper-raised px-1.5 py-1 text-center font-mono font-bold tabular-nums text-ink transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/50 sm:w-24 sm:px-2"
     />
   );
 }

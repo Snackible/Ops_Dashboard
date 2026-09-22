@@ -8,7 +8,7 @@ import { LoadingState } from "../../components/Spinner";
 import { EmptyState } from "../../components/EmptyState";
 import { RefreshButton } from "../../components/RefreshButton";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
-import { isLargerPack } from "../../lib/inventory";
+import { digitFitFontSizePx, isLargerPack } from "../../lib/inventory";
 import type { InventoryItem, Tier } from "../../lib/types";
 
 type Stage = "browsing" | "preview";
@@ -68,7 +68,8 @@ function CatalogRow({
           min={0}
           value={qty}
           onChange={(e) => onChange(Number(e.target.value))}
-          className={`w-16 rounded-md border-2 bg-paper px-1 py-1 text-center font-mono text-[13px] font-bold tabular-nums text-ink transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 ${
+          style={{ fontSize: `${digitFitFontSizePx(String(qty).length)}px` }}
+          className={`w-16 rounded-md border-2 bg-paper px-1 py-1 text-center font-mono font-bold tabular-nums text-ink transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50 ${
             overStock ? "border-warning focus:border-warning" : "border-accent/40 focus:border-accent"
           }`}
         />
