@@ -49,7 +49,7 @@ export default async function handler(req, res) {
     let data;
     switch (body.action) {
       // reads
-      case "login": data = await login(opsId, body.username, body.password); break;
+      case "login": data = await login(ratecardId, opsId, body.username, body.password); break;
       case "getInventory": data = await getInventory(ratecardId); break;
       case "getAccounts": data = await getAccounts(opsId); break;
       case "getRequests": data = await getRequests(opsId, null); break;

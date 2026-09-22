@@ -28,9 +28,15 @@ function toInventoryItem(r) {
 
 // ── Reads ─────────────────────────────────────────────────────────────
 
-export async function login(opsId, username, password) {
+// Users lives on the ratecard spreadsheet, not the operational one - keeping
+// login credentials out of the same sheet as Accounts/Orders/etc. so the two
+// can be shared/permissioned separately.
+export async function login(ratecardId, opsId, username, password) {
   if (!username || !password) throw new Error("Username and password are required");
-  const { [TAB_USERS]: users, [TAB_ACCOUNTS]: accounts } = await readManagedTabs(opsId, [TAB_USERS, TAB_ACCOUNTS]);
+  const [{ [TAB_USERS]: users }, { [TAB_ACCOUNTS]: accounts }] = await Promise.all([
+    readManagedTabs(ratecardId, [TAB_USERS]),
+    readManagedTabs(opsId, [TAB_ACCOUNTS]),
+  ]);
 
   const match = users.find(
     (u) => String(u.username).trim().toLowerCase() === String(username).trim().toLowerCase() && String(u.password) === String(password)
