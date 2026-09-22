@@ -244,9 +244,9 @@ export function InventoryPage() {
       {loading ? (
         <LoadingState label="Loading inventory…" />
       ) : (
-        <div className="grid grid-cols-1 items-start gap-4 pb-4 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="columns-1 gap-4 pb-4 lg:columns-2 xl:columns-3">
           {groups.map(([cat, catItems]) => (
-            <div key={cat}>
+            <div key={cat} className="mb-4 break-inside-avoid">
               <div className="mb-1 px-1 py-1 font-mono text-[10px] uppercase tracking-wide text-ink-faint">
                 {cat} · {catItems.length}
               </div>

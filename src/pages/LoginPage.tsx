@@ -34,7 +34,7 @@ export function LoginPage() {
       </div>
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <p className="font-mono text-[11px] uppercase tracking-wide text-accent-ink">Snackible Ops Dashboard</p>
+          <p className="font-mono text-[11px] uppercase tracking-wide text-accent-ink">Ops x B2B dashboard</p>
           <h1 className="mt-2 font-display text-2xl font-semibold">Sign in</h1>
         </div>
 
