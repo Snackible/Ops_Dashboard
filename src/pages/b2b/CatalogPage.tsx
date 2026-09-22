@@ -311,7 +311,12 @@ export function CatalogPage() {
       ) : (
         <div className="space-y-4 pb-20">
           {(tierFilter === "all" ? TIER_ORDER : [tierFilter]).map((tier) => {
-            const tierItems = filtered.filter((i) => i.tier === tier).sort((a, b) => b.currentStock - a.currentStock);
+            const tierItems = filtered
+              .filter((i) => i.tier === tier)
+              // Category first so same-category items cluster together in
+              // the grid instead of being interleaved by stock level; stock
+              // descending still breaks ties within a category.
+              .sort((a, b) => a.category.localeCompare(b.category) || b.currentStock - a.currentStock);
             if (tierItems.length === 0) return null;
             const c = TIER_CONFIG[tier];
             return (
