@@ -385,16 +385,26 @@ export async function addTierRowHighlighting(ratecardId) {
 
   function addTierRules(sheetId, colRanges, tierColLetter, startRowIndex = 1, endRowIndex = 2000) {
     targetSheetIds.add(sheetId);
-    for (const tier of ["green", "yellow", "orange", "red"]) {
+    const ranges = colRanges.map((c) => ({
+      sheetId, startRowIndex, endRowIndex, startColumnIndex: c.start, endColumnIndex: c.end,
+    }));
+    // An untiered product (blank Tier/Larger Pack Tier cell) defaults to
+    // yellow rather than staying uncolored, so a missing tier reads as
+    // "needs attention" instead of blending into the sheet's white background.
+    for (const [formula, tier] of [
+      [`=$${tierColLetter}${startRowIndex + 1}="green"`, "green"],
+      [`=$${tierColLetter}${startRowIndex + 1}="yellow"`, "yellow"],
+      [`=$${tierColLetter}${startRowIndex + 1}="orange"`, "orange"],
+      [`=$${tierColLetter}${startRowIndex + 1}="red"`, "red"],
+      [`=$${tierColLetter}${startRowIndex + 1}=""`, "yellow"],
+    ]) {
       requests.push({
         addConditionalFormatRule: {
           index: 0,
           rule: {
-            ranges: colRanges.map((c) => ({
-              sheetId, startRowIndex, endRowIndex, startColumnIndex: c.start, endColumnIndex: c.end,
-            })),
+            ranges,
             booleanRule: {
-              condition: { type: "CUSTOM_FORMULA", values: [{ userEnteredValue: `=$${tierColLetter}${startRowIndex + 1}="${tier}"` }] },
+              condition: { type: "CUSTOM_FORMULA", values: [{ userEnteredValue: formula }] },
               format: { backgroundColor: TIER_FILL_COLORS[tier] },
             },
           },
