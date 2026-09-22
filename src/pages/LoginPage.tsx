@@ -1,43 +1,29 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth/AuthContext";
 import { dataClient } from "../lib/data";
-import type { B2BAccount, Role } from "../lib/types";
 import { ThemeToggle } from "../theme/ThemeToggle";
 
 export function LoginPage() {
-  const [role, setRole] = useState<Role>("b2b");
-  const [accounts, setAccounts] = useState<B2BAccount[]>([]);
-  const [accountId, setAccountId] = useState("");
-  const [name, setName] = useState("");
-  const [accountsError, setAccountsError] = useState<string | null>(null);
-  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const { signIn } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    dataClient
-      .getAccounts()
-      .then((list) => {
-        setAccounts(list);
-        setAccountId(list[0]?.accountId ?? "");
-      })
-      .catch((err) => {
-        setAccountsError(err instanceof Error ? err.message : "Could not load accounts");
-      })
-      .finally(() => setAccountsLoading(false));
-  }, []);
-
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (role === "b2b") {
-      // B2B has no real login yet (see RequireRole) - if the account list
-      // failed to load or is empty, just drop straight into the bypass
-      // instead of blocking on it.
-      navigate("/b2b");
-    } else {
-      signIn({ id: "ops-" + (name || "team"), name: name || "Ops Team", role: "ops" });
-      navigate("/ops");
+    setError(null);
+    setBusy(true);
+    try {
+      const user = await dataClient.login(username, password);
+      signIn(user);
+      navigate(user.role === "ops" ? "/ops" : "/b2b");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't sign in");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -52,68 +38,41 @@ export function LoginPage() {
           <h1 className="mt-2 font-display text-2xl font-semibold">Sign in</h1>
         </div>
 
-        <div className="mb-6 flex rounded-full border border-line bg-paper-raised p-1">
-          {(["b2b", "ops"] as Role[]).map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => setRole(r)}
-              className={`flex-1 rounded-full py-2 text-sm font-medium transition-all active:scale-[0.98] ${
-                role === r ? "bg-accent text-white" : "text-ink-soft hover:text-ink"
-              }`}
-            >
-              {r === "b2b" ? "B2B" : "Ops"}
-            </button>
-          ))}
-        </div>
-
         <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-line bg-paper-raised p-6 shadow-card">
-          {role === "b2b" ? (
-            <label className="block">
-              <span className="text-sm text-ink-soft">Company account</span>
-              <select
-                value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
-                disabled={accounts.length === 0}
-                className="mt-1 w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink transition-colors focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
-              >
-                {accounts.map((a) => (
-                  <option key={a.accountId} value={a.accountId}>
-                    {a.companyName}
-                  </option>
-                ))}
-              </select>
-              {accountsLoading && <p className="mt-1.5 text-[12px] text-ink-faint">Loading accounts…</p>}
-              {!accountsLoading && accountsError && (
-                <p className="mt-1.5 text-[12px] text-red-400">Couldn't load accounts: {accountsError}</p>
-              )}
-              {!accountsLoading && !accountsError && accounts.length === 0 && (
-                <p className="mt-1.5 text-[12px] text-ink-faint">
-                  No accounts set up yet — Continue still works, it'll drop you into a test session.
-                </p>
-              )}
-            </label>
-          ) : (
-            <label className="block">
-              <span className="text-sm text-ink-soft">Your name</span>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Priya"
-                className="mt-1 w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-faint transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </label>
-          )}
+          <label className="block">
+            <span className="text-sm text-ink-soft">Name</span>
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="e.g. Priya"
+              autoFocus
+              className="mt-1 w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-faint transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-sm text-ink-soft">4-digit code</span>
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              type="password"
+              inputMode="numeric"
+              pattern="\d{4}"
+              maxLength={4}
+              placeholder="••••"
+              className="mt-1 w-full rounded-md border border-line bg-paper px-3 py-2 text-sm tracking-[0.3em] text-ink placeholder:tracking-normal placeholder:text-ink-faint transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </label>
+
+          {error && <p className="text-[13px] text-danger">{error}</p>}
 
           <button
             type="submit"
+            disabled={busy || username.trim() === "" || password.length !== 4}
             className="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
           >
-            Continue
+            {busy ? "Signing in…" : "Sign in"}
           </button>
-          <p className="text-center text-[11px] text-ink-faint">
-            Demo mode — mock authentication, no password required yet.
-          </p>
         </form>
       </div>
     </div>

@@ -57,6 +57,8 @@ export interface StockRequest {
   decidedBy: string | null;
   decisionNote: string | null;
   lineItems: RequestLineItem[];
+  /** Name of the B2B person who committed this order, so Ops knows who to ask about it. */
+  requestedByName: string | null;
 }
 
 /**

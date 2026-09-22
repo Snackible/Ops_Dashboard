@@ -1,5 +1,5 @@
 import { callSheets } from "./sheetsClient";
-import type { B2BAccount, FulfillmentLogRow, InventoryItem, ProductRequest, StockRequest } from "../types";
+import type { AuthUser, B2BAccount, FulfillmentLogRow, InventoryItem, ProductRequest, StockRequest } from "../types";
 import type { DataClient } from "./dataClient";
 
 /**
@@ -13,6 +13,10 @@ import type { DataClient } from "./dataClient";
  * also what lets an Ops tab hear about a push made in someone else's browser.
  */
 export const sheetsDataClient: DataClient = {
+  login(username, password) {
+    return callSheets<AuthUser>("login", { username, password });
+  },
+
   getInventory() {
     return callSheets<InventoryItem[]>("getInventory");
   },
@@ -29,6 +33,10 @@ export const sheetsDataClient: DataClient = {
     return callSheets<InventoryItem>("setTier", { skuId, tier });
   },
 
+  updateInventoryFields(updates) {
+    return callSheets<InventoryItem[]>("updateInventoryFields", { updates });
+  },
+
   getAccounts() {
     return callSheets<B2BAccount[]>("getAccounts");
   },
@@ -38,8 +46,8 @@ export const sheetsDataClient: DataClient = {
     return accounts.find((a) => a.accountId === accountId);
   },
 
-  commitOrder(accountId, lineItems) {
-    return callSheets<StockRequest>("commitOrder", { accountId, lineItems });
+  commitOrder(accountId, lineItems, requestedByName) {
+    return callSheets<StockRequest>("commitOrder", { accountId, lineItems, requestedByName });
   },
 
   getCommittedOrders(accountId) {

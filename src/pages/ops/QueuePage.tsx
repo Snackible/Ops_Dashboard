@@ -47,7 +47,10 @@ function RequestCard({
     <div className="rounded-xl border border-line bg-paper-raised p-5 transition-shadow hover:shadow-card">
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <p className="font-semibold">{account?.companyName ?? "Unknown account"}</p>
+          <p className="font-semibold">
+            {account?.companyName ?? "Unknown account"}
+            {request.requestedByName && <span className="font-normal text-ink-soft"> — {request.requestedByName}</span>}
+          </p>
           <p className="font-mono text-[11px] text-ink-faint">
             {request.requestId} · pushed {request.submittedAt ? new Date(request.submittedAt).toLocaleString() : ""}
           </p>

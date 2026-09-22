@@ -1,5 +1,5 @@
 import { readRatecardRows, resolveRatecardColumn } from "./lib/ratecard.js";
-import { writeRange, colLetter } from "./lib/sheetsClient.js";
+import { writeRange, batchWriteRanges, colLetter } from "./lib/sheetsClient.js";
 import {
   readManagedTabs,
   appendRows,
@@ -13,6 +13,7 @@ import {
   TAB_ORDER_LINES,
   TAB_FULFILLMENT,
   TAB_PRODUCT_REQUESTS,
+  TAB_USERS,
   MANAGED_TITLES,
 } from "./lib/managedSheets.js";
 import { withLock } from "./lib/lock.js";
@@ -26,6 +27,29 @@ function toInventoryItem(r) {
 }
 
 // ── Reads ─────────────────────────────────────────────────────────────
+
+export async function login(opsId, username, password) {
+  if (!username || !password) throw new Error("Username and password are required");
+  const { [TAB_USERS]: users, [TAB_ACCOUNTS]: accounts } = await readManagedTabs(opsId, [TAB_USERS, TAB_ACCOUNTS]);
+
+  const match = users.find(
+    (u) => String(u.username).trim().toLowerCase() === String(username).trim().toLowerCase() && String(u.password) === String(password)
+  );
+  if (!match) throw new Error("Invalid username or password");
+
+  const role = String(match.role) === "ops" ? "ops" : "b2b";
+  const accountId = role === "b2b" ? String(match.account_id || "") || undefined : undefined;
+  if (role === "b2b" && accountId && !accounts.some((a) => String(a.account_id) === accountId)) {
+    throw new Error(`User "${match.username}" is set up with an unknown account_id`);
+  }
+
+  return {
+    id: `user-${String(match.username).toLowerCase()}`,
+    name: match.display_name ? String(match.display_name) : String(match.username),
+    role,
+    accountId,
+  };
+}
 
 export async function getInventory(ratecardId) {
   const { rows } = await readRatecardRows(ratecardId, MANAGED_TITLES);
@@ -50,6 +74,7 @@ function buildRequests(orderRows, lineRows, accountId) {
       submittedAt: isoOrNull(r.submitted_at), decidedAt: isoOrNull(r.decided_at),
       decidedBy: r.decided_by ? String(r.decided_by) : null,
       decisionNote: r.decision_note ? String(r.decision_note) : null,
+      requestedByName: r.requested_by_name ? String(r.requested_by_name) : null,
       lineItems: lineRows
         .filter((li) => String(li.request_id) === String(r.request_id))
         .map((li) => ({
@@ -109,7 +134,36 @@ export async function setInventoryField(ratecardId, skuId, field, value) {
   return toInventoryItem(row);
 }
 
-export async function commitOrder(ratecardId, opsId, accountId, lineItems) {
+/**
+ * Applies several stock/active/tier edits across possibly-different SKUs in
+ * one Sheets batchUpdate instead of one writeRange (and one lock cycle) per
+ * field - see server/lib/sheetsClient.js#batchWriteRanges.
+ */
+export async function updateInventoryFields(ratecardId, updates) {
+  const wanted = (updates || []).filter((u) => u && u.skuId && ["stock", "active", "tier"].indexOf(u.field) !== -1);
+  if (wanted.length === 0) throw new Error("No updates to apply");
+
+  const { rows, sheetMeta } = await readRatecardRows(ratecardId, MANAGED_TITLES);
+  const bySku = new Map(rows.map((r) => [r.skuId, r]));
+
+  const ranges = [];
+  const touched = new Map();
+  for (const u of wanted) {
+    const row = bySku.get(u.skuId);
+    if (!row) throw new Error("Unknown SKU " + u.skuId);
+    const colIndex = await resolveRatecardColumn(sheetMeta, row, row.fields[u.field]);
+    ranges.push({ title: row.title, a1: `${colLetter(colIndex)}${row.row}`, value: u.value });
+    if (u.field === "stock") row.currentStock = Number(u.value) || 0;
+    if (u.field === "active") row.active = Boolean(u.value);
+    if (u.field === "tier") row.tier = String(u.value).toLowerCase();
+    touched.set(u.skuId, row);
+  }
+
+  await batchWriteRanges(ratecardId, ranges);
+  return Array.from(touched.values()).map(toInventoryItem);
+}
+
+export async function commitOrder(ratecardId, opsId, accountId, lineItems, requestedByName) {
   const wanted = (lineItems || []).filter((li) => Number(li.qty) > 0);
   if (wanted.length === 0) throw new Error("Add at least one item before committing");
 
@@ -135,7 +189,7 @@ export async function commitOrder(ratecardId, opsId, accountId, lineItems) {
 
   await appendRows(opsId, TAB_ORDERS, [{
     request_id: requestId, account_id: accountId, status: "committed", created_at: createdAt,
-    submitted_at: "", decided_at: "", decided_by: "", decision_note: "",
+    submitted_at: "", decided_at: "", decided_by: "", decision_note: "", requested_by_name: requestedByName || "",
   }]);
   await appendRows(opsId, TAB_ORDER_LINES, withLineIds.map((li) => ({
     line_item_id: li.lineItemId, request_id: requestId, sku_id: li.skuId,
@@ -144,7 +198,7 @@ export async function commitOrder(ratecardId, opsId, accountId, lineItems) {
 
   return {
     requestId, accountId, status: "committed", createdAt,
-    submittedAt: null, decidedAt: null, decidedBy: null, decisionNote: null,
+    submittedAt: null, decidedAt: null, decidedBy: null, decisionNote: null, requestedByName: requestedByName || null,
     lineItems: withLineIds.map((li) => ({
       lineItemId: li.lineItemId, skuId: li.skuId, qty: Number(li.qty), unitMrpSnapshot: Number(bySku.get(li.skuId).mrpInr),
     })),

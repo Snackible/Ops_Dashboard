@@ -87,7 +87,10 @@ export function HistoryPage() {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium">{accountsById.get(req.accountId)?.companyName}</p>
+                  <p className="font-medium">
+                    {accountsById.get(req.accountId)?.companyName}
+                    {req.requestedByName && <span className="font-normal text-ink-soft"> — {req.requestedByName}</span>}
+                  </p>
                   <p className="font-mono text-[11px] text-ink-faint">
                     {req.requestId} · decided {req.decidedAt ? new Date(req.decidedAt).toLocaleString() : ""} by{" "}
                     {req.decidedBy}

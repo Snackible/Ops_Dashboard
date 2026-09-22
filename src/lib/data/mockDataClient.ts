@@ -1,8 +1,23 @@
 import catalogSeed from "../../data/catalog.json";
 import { eventBus } from "../events";
 import { readMockFulfillmentSheet } from "../integrations/mockFulfillmentSheet";
-import type { B2BAccount, InventoryItem, ProductRequest, ProductRequestStatus, StockRequest, Tier } from "../types";
+import type { AuthUser, B2BAccount, InventoryItem, ProductRequest, ProductRequestStatus, StockRequest, Tier } from "../types";
 import type { DataClient } from "./dataClient";
+
+/**
+ * Local stand-in for the "Users" sheet tab (see managedSheets.js on the real
+ * backend) - same shape, same idea: username + 4-digit code -> role (+
+ * account for b2b). Add a row here to add a mock login; it never persists to
+ * localStorage since credentials aren't something local testing should reset
+ * independently of a code change.
+ */
+const mockUsers: { username: string; password: string; role: "ops" | "b2b"; accountId?: string }[] = [
+  { username: "Priya", password: "4821", role: "ops" },
+  { username: "Karan", password: "7093", role: "ops" },
+  { username: "Rahul", password: "1620", role: "b2b", accountId: "acct-blue-orchard" },
+  { username: "Ayesha", password: "3357", role: "b2b", accountId: "acct-corner-cafe" },
+  { username: "Meera", password: "9042", role: "b2b", accountId: "acct-blue-orchard" },
+];
 
 const STORAGE_KEY = "snackible-ops-mock-db-v4";
 
@@ -84,6 +99,15 @@ function findInventory(skuId: string): InventoryItem {
 }
 
 export const mockDataClient: DataClient = {
+  async login(username, password) {
+    const match = mockUsers.find(
+      (u) => u.username.toLowerCase() === username.trim().toLowerCase() && u.password === password
+    );
+    if (!match) throw new Error("Invalid username or password");
+    const user: AuthUser = { id: `user-${match.username.toLowerCase()}`, name: match.username, role: match.role, accountId: match.accountId };
+    return tick(user);
+  },
+
   async getInventory() {
     return tick([...db.inventory]);
   },
@@ -112,6 +136,20 @@ export const mockDataClient: DataClient = {
     return tick(item);
   },
 
+  async updateInventoryFields(updates) {
+    const touched = new Map<string, InventoryItem>();
+    for (const u of updates) {
+      const item = findInventory(u.skuId);
+      if (u.field === "stock") item.currentStock = u.value as number;
+      if (u.field === "active") item.active = u.value as boolean;
+      if (u.field === "tier") item.tier = u.value as Tier;
+      touched.set(u.skuId, item);
+    }
+    saveDB(db);
+    for (const item of touched.values()) eventBus.emit("InventoryUpdated", { item });
+    return tick(Array.from(touched.values()));
+  },
+
   async getAccounts() {
     return tick([...db.accounts]);
   },
@@ -120,7 +158,7 @@ export const mockDataClient: DataClient = {
     return tick(db.accounts.find((a) => a.accountId === accountId));
   },
 
-  async commitOrder(accountId, lineItems) {
+  async commitOrder(accountId, lineItems, requestedByName) {
     const wanted = lineItems.filter((li) => li.qty > 0);
     if (wanted.length === 0) throw new Error("Add at least one item before committing");
 
@@ -141,6 +179,7 @@ export const mockDataClient: DataClient = {
       decidedAt: null,
       decidedBy: null,
       decisionNote: null,
+      requestedByName: requestedByName || null,
       lineItems: wanted.map((li) => {
         const item = findInventory(li.skuId);
         item.currentStock -= li.qty;

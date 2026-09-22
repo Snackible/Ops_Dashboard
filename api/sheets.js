@@ -1,10 +1,12 @@
 import {
+  login,
   getInventory,
   getAccounts,
   getRequests,
   getFulfillmentLog,
   getProductRequests,
   setInventoryField,
+  updateInventoryFields,
   commitOrder,
   pushOrder,
   cancelOrder,
@@ -47,6 +49,7 @@ export default async function handler(req, res) {
     let data;
     switch (body.action) {
       // reads
+      case "login": data = await login(opsId, body.username, body.password); break;
       case "getInventory": data = await getInventory(ratecardId); break;
       case "getAccounts": data = await getAccounts(opsId); break;
       case "getRequests": data = await getRequests(opsId, null); break;
@@ -60,7 +63,8 @@ export default async function handler(req, res) {
       case "updateStock": data = await withLock(opsId, () => setInventoryField(ratecardId, body.skuId, "current_stock", body.currentStock)); break;
       case "setActive": data = await withLock(opsId, () => setInventoryField(ratecardId, body.skuId, "active", body.active)); break;
       case "setTier": data = await withLock(opsId, () => setInventoryField(ratecardId, body.skuId, "tier", body.tier)); break;
-      case "commitOrder": data = await withLock(opsId, () => commitOrder(ratecardId, opsId, body.accountId, body.lineItems)); break;
+      case "updateInventoryFields": data = await withLock(opsId, () => updateInventoryFields(ratecardId, body.updates)); break;
+      case "commitOrder": data = await withLock(opsId, () => commitOrder(ratecardId, opsId, body.accountId, body.lineItems, body.requestedByName)); break;
       case "pushOrder": data = await withLock(opsId, () => pushOrder(opsId, body.requestId)); break;
       case "cancelOrder": data = await withLock(opsId, () => cancelOrder(ratecardId, opsId, body.requestId)); break;
       case "decideRequest": data = await withLock(opsId, () => decideRequest(ratecardId, opsId, body.requestId, body.decidedBy, body.approve, body.decisionNote)); break;

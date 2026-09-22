@@ -1,4 +1,4 @@
-import type { B2BAccount, FulfillmentLogRow, InventoryItem, ProductRequest, ProductRequestStatus, StockRequest, Tier } from "../types";
+import type { AuthUser, B2BAccount, FulfillmentLogRow, InventoryItem, ProductRequest, ProductRequestStatus, StockRequest, Tier } from "../types";
 
 /**
  * Everything the UI needs from a backend, named after what the app does
@@ -10,11 +10,23 @@ import type { B2BAccount, FulfillmentLogRow, InventoryItem, ProductRequest, Prod
  * nothing outside this file needs to change either way.
  */
 export interface DataClient {
+  /** Looks up a username + 4-digit code against the Users tab (or its mock stand-in) and returns who signed in. */
+  login(username: string, password: string): Promise<AuthUser>;
+
   getInventory(): Promise<InventoryItem[]>;
   updateStock(skuId: string, currentStock: number): Promise<InventoryItem>;
   setActive(skuId: string, active: boolean): Promise<InventoryItem>;
   /** Ops manually re-files an item into a different tier — no formula behind it. */
   setTier(skuId: string, tier: Tier): Promise<InventoryItem>;
+
+  /**
+   * Applies several stock/active/tier edits in one network call and one
+   * lock cycle instead of one per field - what the Inventory and Tiers
+   * pages' "Update" buttons use to flush a batch of local edits at once.
+   */
+  updateInventoryFields(
+    updates: { skuId: string; field: "stock" | "active" | "tier"; value: number | boolean | Tier }[]
+  ): Promise<InventoryItem[]>;
 
   getAccounts(): Promise<B2BAccount[]>;
   getAccount(accountId: string): Promise<B2BAccount | undefined>;
@@ -27,7 +39,8 @@ export interface DataClient {
    */
   commitOrder(
     accountId: string,
-    lineItems: { skuId: string; qty: number }[]
+    lineItems: { skuId: string; qty: number }[],
+    requestedByName: string | null
   ): Promise<StockRequest>;
 
   /** Committed-but-not-yet-pushed orders for an account — the "Committed" tab. */

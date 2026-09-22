@@ -136,7 +136,8 @@ export function CatalogPage() {
       if (toCommit.length > 0) {
         await dataClient.commitOrder(
           user.accountId,
-          toCommit.map(([skuId, qty]) => ({ skuId, qty }))
+          toCommit.map(([skuId, qty]) => ({ skuId, qty })),
+          user.name
         );
       }
       await Promise.all(toRequest.map(([skuId, qty]) => dataClient.requestProduct(user.accountId!, skuId, qty, null)));

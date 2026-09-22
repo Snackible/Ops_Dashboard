@@ -9,10 +9,12 @@ export function registerOpsPopupSound(): void {
     if (getCurrentUser()?.role !== "ops") return;
     const account = await dataClient.getAccount(request.accountId);
     const itemCount = request.lineItems.length;
+    const totalQty = request.lineItems.reduce((sum, li) => sum + li.qty, 0);
+    const who = request.requestedByName ? `${request.requestedByName} at ${account?.companyName ?? "a B2B account"}` : account?.companyName ?? "A B2B account";
     notificationStore.push({
       kind: "info",
       title: "New request",
-      body: `${account?.companyName ?? "A B2B account"} requested ${itemCount} item${itemCount === 1 ? "" : "s"}.`,
+      body: `${who} requested ${itemCount} item${itemCount === 1 ? "" : "s"} (${totalQty} units total).`,
     });
   });
 

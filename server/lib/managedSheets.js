@@ -13,19 +13,43 @@ export const TAB_ORDERS = "Orders";
 export const TAB_ORDER_LINES = "OrderLines";
 export const TAB_FULFILLMENT = "FulfillmentLog";
 export const TAB_PRODUCT_REQUESTS = "ProductRequests";
+export const TAB_USERS = "Users";
 export const TAB_LOCK = "Lock";
 
 export const COLUMNS = {
   [TAB_ACCOUNTS]: ["account_id", "company_name", "contact_name", "contact_email", "contact_phone"],
-  [TAB_ORDERS]: ["request_id", "account_id", "status", "created_at", "submitted_at", "decided_at", "decided_by", "decision_note"],
+  [TAB_ORDERS]: ["request_id", "account_id", "status", "created_at", "submitted_at", "decided_at", "decided_by", "decision_note", "requested_by_name"],
   [TAB_ORDER_LINES]: ["line_item_id", "request_id", "sku_id", "qty", "unit_mrp_snapshot"],
   [TAB_FULFILLMENT]: ["date_fulfilled", "request_id", "company_name", "contact_name", "contact_phone", "category", "product_name", "qty", "unit_mrp", "line_total", "approved_by", "notes"],
   [TAB_PRODUCT_REQUESTS]: ["request_id", "account_id", "sku_id", "qty", "note", "status", "created_at", "decided_at", "decided_by", "hold_until"],
+  /**
+   * username: a name, matched case-insensitively at login.
+   * password: a plaintext 4-digit code (see server/actions.js#login) - fine
+   * for now per explicit sign-off, easy to swap for a hash later since it's
+   * compared in exactly one place.
+   * role: "ops" or "b2b". account_id: required for "b2b", ignored for "ops" -
+   * must match a row in Accounts. display_name: optional, falls back to
+   * username when blank.
+   */
+  [TAB_USERS]: ["username", "password", "role", "account_id", "display_name"],
   [TAB_LOCK]: ["token", "acquired_at"],
 };
 
 /** Every tab this module manages, including the Lock tab used for the advisory mutex - kept out of ratecard scanning too. */
 export const MANAGED_TITLES = Object.keys(COLUMNS);
+
+/**
+ * Seeded the first time the Users tab is created, so login works out of the
+ * box: 2 ops + 3 b2b (2 on Blue Orchard, 1 on Corner Cafe). Add more rows
+ * directly in the sheet afterwards - this only runs once, on tab creation.
+ */
+const DEFAULT_USERS = [
+  ["Priya", "4821", "ops", "", "Priya"],
+  ["Karan", "7093", "ops", "", "Karan"],
+  ["Rahul", "1620", "b2b", "acct-blue-orchard", "Rahul Mehta"],
+  ["Ayesha", "3357", "b2b", "acct-corner-cafe", "Ayesha Khan"],
+  ["Meera", "9042", "b2b", "acct-blue-orchard", "Meera Iyer"],
+];
 
 /** Ensures every listed tab exists (creating it with its header row if missing) and returns Map<title, sheetId>. */
 export async function ensureTabs(spreadsheetId, titles) {
@@ -35,14 +59,23 @@ export async function ensureTabs(spreadsheetId, titles) {
     if (!sheetIds.has(title)) {
       const sheetId = await createSheetWithHeader(spreadsheetId, title, COLUMNS[title]);
       sheetIds.set(title, sheetId);
+      if (title === TAB_USERS) await appendRows(spreadsheetId, TAB_USERS, defaultUserObjects());
     }
   }
   return sheetIds;
 }
 
-function parseObjects(values) {
+function defaultUserObjects() {
+  const headers = COLUMNS[TAB_USERS];
+  return DEFAULT_USERS.map((row) => Object.fromEntries(headers.map((h, i) => [h, row[i]])));
+}
+
+// Headers come from COLUMNS (the schema this code maintains), not from
+// whatever text happens to be in the sheet's row 1 - so adding a new column
+// to COLUMNS (like requested_by_name) stays readable for tabs that were
+// created before that column existed, with no live header-row edit needed.
+function parseObjects(values, headers) {
   if (values.length < 2) return [];
-  const headers = values[0];
   const rows = [];
   for (let i = 1; i < values.length; i++) {
     const line = values[i];
@@ -60,7 +93,7 @@ export async function readManagedTabs(spreadsheetId, titles) {
   await ensureTabs(spreadsheetId, titles);
   const raw = await readTabs(spreadsheetId, titles);
   const out = {};
-  titles.forEach((t) => { out[t] = parseObjects(raw[t] || []); });
+  titles.forEach((t) => { out[t] = parseObjects(raw[t] || [], COLUMNS[t]); });
   return out;
 }
 
