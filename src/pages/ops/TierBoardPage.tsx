@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { dataClient } from "../../lib/data";
 import { liveStore, useLiveStore } from "../../lib/data/liveStore";
+import { notificationStore } from "../../lib/integrations/notificationStore";
 import { RefreshButton } from "../../components/RefreshButton";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
 import { SkeletonCard } from "../../components/Skeleton";
@@ -11,6 +12,7 @@ function TierColumn({
   tier,
   items,
   draggedSku,
+  pendingSkus,
   onDragStart,
   onDragEnd,
   onDrop,
@@ -18,6 +20,7 @@ function TierColumn({
   tier: Tier;
   items: InventoryItem[];
   draggedSku: string | null;
+  pendingSkus: Set<string>;
   onDragStart: (skuId: string) => void;
   onDragEnd: () => void;
   onDrop: (tier: Tier) => void;
@@ -56,9 +59,9 @@ function TierColumn({
             draggable
             onDragStart={() => onDragStart(item.skuId)}
             onDragEnd={onDragEnd}
-            className={`cursor-grab select-none rounded-md border border-line bg-paper-raised px-2.5 py-1.5 transition-opacity active:cursor-grabbing ${
+            className={`cursor-grab select-none rounded-md border px-2.5 py-1.5 transition-opacity active:cursor-grabbing ${
               draggedSku === item.skuId ? "opacity-40" : "opacity-100"
-            }`}
+            } ${pendingSkus.has(item.skuId) ? "border-accent bg-accent-soft/30" : "border-line bg-paper-raised"}`}
           >
             <p className="text-[12.5px] font-medium leading-tight">
               {item.productName}
@@ -82,23 +85,57 @@ function TierColumn({
 export function TierBoardPage() {
   // Reads shared state instead of fetching its own copy on mount - see
   // liveStore.ts. Navigating to/from this page never fires a network call
-  // on its own; only a manual refresh or dropping an item onto a new tier
-  // updates it.
-  const { inventory: items, inventoryReady } = useLiveStore();
+  // on its own; only a manual refresh or clicking Update sends anything.
+  const { inventory: liveItems, inventoryReady } = useLiveStore();
   const loading = !inventoryReady;
   const [category, setCategory] = useState("All");
   const [draggedSku, setDraggedSku] = useState<string | null>(null);
 
+  // A drop just re-files the item locally; nothing is sent to the server
+  // until Update is clicked, which flushes every pending re-file as one
+  // batched request instead of one per drop (see dataClient.updateInventoryFields).
+  const [pendingTiers, setPendingTiers] = useState<Record<string, Tier>>({});
+  const [updating, setUpdating] = useState(false);
+  const pendingCount = Object.keys(pendingTiers).length;
+
+  const items = useMemo(
+    () => liveItems.map((item) => (pendingTiers[item.skuId] ? { ...item, tier: pendingTiers[item.skuId] } : item)),
+    [liveItems, pendingTiers]
+  );
+
   const categories = useMemo(() => ["All", ...Array.from(new Set(items.map((i) => i.category)))], [items]);
   const filtered = category === "All" ? items : items.filter((i) => i.category === category);
 
-  async function handleDrop(tier: Tier) {
+  function handleDrop(tier: Tier) {
     if (!draggedSku) return;
     const item = items.find((i) => i.skuId === draggedSku);
     setDraggedSku(null);
     if (!item || item.tier === tier) return;
-    await dataClient.setTier(draggedSku, tier);
-    liveStore.refreshInventory();
+    setPendingTiers((prev) => ({ ...prev, [draggedSku]: tier }));
+  }
+
+  async function handleUpdate() {
+    const updates = Object.entries(pendingTiers).map(([skuId, tier]) => ({ skuId, field: "tier" as const, value: tier }));
+    if (updates.length === 0) return;
+    setUpdating(true);
+    try {
+      await dataClient.updateInventoryFields(updates);
+      setPendingTiers({});
+      liveStore.refreshInventory();
+      notificationStore.push({
+        kind: "success",
+        title: "Tiers updated",
+        body: `${pendingCount} item${pendingCount === 1 ? "" : "s"} re-filed in one request.`,
+      });
+    } catch (err) {
+      notificationStore.push({
+        kind: "danger",
+        title: "Couldn't save tiers",
+        body: err instanceof Error ? err.message : "Something went wrong.",
+      });
+    } finally {
+      setUpdating(false);
+    }
   }
 
   return (
@@ -108,6 +145,13 @@ export function TierBoardPage() {
           <div className="flex items-center gap-2">
             <h1 className="font-display text-2xl font-semibold">Tiers</h1>
             <RefreshButton onRefresh={liveStore.refreshInventory} />
+            <button
+              onClick={handleUpdate}
+              disabled={pendingCount === 0 || updating}
+              className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40"
+            >
+              {updating ? "Updating…" : pendingCount > 0 ? `Update (${pendingCount})` : "Update"}
+            </button>
           </div>
           <p className="text-sm text-ink-soft">Drag a product between columns to re-file it.</p>
         </div>
@@ -138,6 +182,7 @@ export function TierBoardPage() {
               tier={tier}
               items={filtered.filter((i) => i.tier === tier)}
               draggedSku={draggedSku}
+              pendingSkus={new Set(Object.keys(pendingTiers))}
               onDragStart={setDraggedSku}
               onDragEnd={() => setDraggedSku(null)}
               onDrop={handleDrop}

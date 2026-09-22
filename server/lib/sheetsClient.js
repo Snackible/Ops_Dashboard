@@ -78,6 +78,23 @@ export async function writeCell(spreadsheetId, title, row1Based, col1Based, valu
   await writeRange(spreadsheetId, title, a1, [[value]]);
 }
 
+/**
+ * Writes several single-cell ranges (possibly across different tabs) in ONE
+ * Sheets API call via values.batchUpdate - what lets an "Update" button that
+ * collects several field edits flush them as one write instead of one per
+ * field. updates: [{ title, a1, value }].
+ */
+export async function batchWriteRanges(spreadsheetId, updates) {
+  if (updates.length === 0) return;
+  await sheetsApi().spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      valueInputOption: "USER_ENTERED",
+      data: updates.map((u) => ({ range: `${quoteSheetName(u.title)}!${u.a1}`, values: [[u.value]] })),
+    },
+  });
+}
+
 export async function appendRows(spreadsheetId, title, rows) {
   if (rows.length === 0) return;
   await sheetsApi().spreadsheets.values.append({

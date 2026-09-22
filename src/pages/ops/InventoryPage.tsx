@@ -51,17 +51,23 @@ function StockInput({ value, onCommit }: { value: number; onCommit: (next: numbe
 
 function InventoryRow({
   item,
+  pending,
   onStockChange,
   onActiveToggle,
   onTierChange,
 }: {
   item: InventoryItem;
+  pending: boolean;
   onStockChange: (skuId: string, value: number) => void;
   onActiveToggle: (skuId: string, active: boolean) => void;
   onTierChange: (skuId: string, tier: Tier) => void;
 }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 transition-colors hover:bg-paper-raised">
+    <div
+      className={`flex items-center gap-2 border-l-2 px-3 py-1.5 transition-colors hover:bg-paper-raised ${
+        pending ? "border-l-accent bg-accent-soft/30" : "border-l-transparent"
+      }`}
+    >
       <div className="min-w-0 flex-1">
         <p className="truncate text-[12.5px] leading-tight">
           {item.productName}
@@ -83,14 +89,32 @@ function InventoryRow({
   );
 }
 
+interface PendingChange {
+  stock?: number;
+  active?: boolean;
+  tier?: Tier;
+}
+
 export function InventoryPage() {
   // Reads shared state instead of fetching its own copy on mount - see
   // liveStore.ts. Only a manual refresh or a mutation made right here
   // updates it; navigating to/from this page never fires a network call.
-  const { inventory: items, inventoryReady } = useLiveStore();
+  const { inventory: liveItems, inventoryReady } = useLiveStore();
   const loading = !inventoryReady;
   const [category, setCategory] = useState("All");
   const [tierFilter, setTierFilter] = useState<TierFilter>("all");
+
+  // Edits are held here rather than sent immediately - the Update button
+  // flushes everything collected so far as one batched request (see
+  // dataClient.updateInventoryFields) instead of one request per field.
+  const [pending, setPending] = useState<Record<string, PendingChange>>({});
+  const [updating, setUpdating] = useState(false);
+  const pendingCount = Object.keys(pending).length;
+
+  const items = useMemo(
+    () => liveItems.map((item) => (pending[item.skuId] ? { ...item, ...pending[item.skuId] } : item)),
+    [liveItems, pending]
+  );
 
   const categories = useMemo(() => ["All", ...Array.from(new Set(items.map((i) => i.category)))], [items]);
   const filtered = items.filter(
@@ -119,33 +143,45 @@ export function InventoryPage() {
     });
   }
 
-  async function handleStockChange(skuId: string, value: number) {
-    try {
-      await dataClient.updateStock(skuId, Math.max(0, value));
-      liveStore.refreshInventory();
-    } catch (err) {
-      reportError("Couldn't update stock", err);
-      liveStore.refreshInventory();
-    }
+  function setPendingField(skuId: string, change: PendingChange) {
+    setPending((prev) => ({ ...prev, [skuId]: { ...prev[skuId], ...change } }));
   }
 
-  async function handleActiveToggle(skuId: string, active: boolean) {
-    try {
-      await dataClient.setActive(skuId, active);
-      liveStore.refreshInventory();
-    } catch (err) {
-      reportError("Couldn't update active status", err);
-      liveStore.refreshInventory();
-    }
+  function handleStockChange(skuId: string, value: number) {
+    setPendingField(skuId, { stock: Math.max(0, value) });
   }
 
-  async function handleTierChange(skuId: string, tier: Tier) {
+  function handleActiveToggle(skuId: string, active: boolean) {
+    setPendingField(skuId, { active });
+  }
+
+  function handleTierChange(skuId: string, tier: Tier) {
+    setPendingField(skuId, { tier });
+  }
+
+  async function handleUpdate() {
+    const updates = Object.entries(pending).flatMap(([skuId, change]) => {
+      const fields: { skuId: string; field: "stock" | "active" | "tier"; value: number | boolean | Tier }[] = [];
+      if (change.stock !== undefined) fields.push({ skuId, field: "stock", value: change.stock });
+      if (change.active !== undefined) fields.push({ skuId, field: "active", value: change.active });
+      if (change.tier !== undefined) fields.push({ skuId, field: "tier", value: change.tier });
+      return fields;
+    });
+    if (updates.length === 0) return;
+    setUpdating(true);
     try {
-      await dataClient.setTier(skuId, tier);
+      await dataClient.updateInventoryFields(updates);
+      setPending({});
       liveStore.refreshInventory();
+      notificationStore.push({
+        kind: "success",
+        title: "Inventory updated",
+        body: `${pendingCount} item${pendingCount === 1 ? "" : "s"} saved in one request.`,
+      });
     } catch (err) {
-      reportError("Couldn't update tier", err);
-      liveStore.refreshInventory();
+      reportError("Couldn't save changes", err);
+    } finally {
+      setUpdating(false);
     }
   }
 
@@ -156,6 +192,13 @@ export function InventoryPage() {
           <div className="flex items-center gap-2">
             <h1 className="font-display text-2xl font-semibold">Inventory</h1>
             <RefreshButton onRefresh={liveStore.refreshInventory} />
+            <button
+              onClick={handleUpdate}
+              disabled={pendingCount === 0 || updating}
+              className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40"
+            >
+              {updating ? "Updating…" : pendingCount > 0 ? `Update (${pendingCount})` : "Update"}
+            </button>
           </div>
           <p className="text-sm text-ink-soft">
             {loading ? "Loading…" : `${items.length} SKUs from the ratecard. Stock starts at 0 until counted.`}
@@ -211,6 +254,7 @@ export function InventoryPage() {
                   <InventoryRow
                     key={item.skuId}
                     item={item}
+                    pending={pending[item.skuId] !== undefined}
                     onStockChange={handleStockChange}
                     onActiveToggle={handleActiveToggle}
                     onTierChange={handleTierChange}
