@@ -39,17 +39,22 @@ export default async function handler(req, res) {
   }
 
   const ratecardId = process.env.RATECARD_SPREADSHEET_ID;
-  const opsId = process.env.OPERATIONAL_SPREADSHEET_ID;
-  if (!ratecardId || !opsId) {
+  // OPERATIONAL_SPREADSHEET_ID now points at the dedicated logins-only
+  // spreadsheet (renamed from its old role) - Accounts/Orders/OrderLines/
+  // FulfillmentLog/ProductRequests/Lock all moved onto the ratecard
+  // spreadsheet, so only Users is looked up here.
+  const loginId = process.env.OPERATIONAL_SPREADSHEET_ID;
+  if (!ratecardId || !loginId) {
     res.status(200).json({ ok: false, error: "RATECARD_SPREADSHEET_ID / OPERATIONAL_SPREADSHEET_ID not configured" });
     return;
   }
+  const opsId = ratecardId;
 
   try {
     let data;
     switch (body.action) {
       // reads
-      case "login": data = await login(ratecardId, opsId, body.username, body.password); break;
+      case "login": data = await login(loginId, opsId, body.username, body.password); break;
       case "getInventory": data = await getInventory(ratecardId); break;
       case "getAccounts": data = await getAccounts(opsId); break;
       case "getRequests": data = await getRequests(opsId, null); break;

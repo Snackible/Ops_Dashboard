@@ -28,14 +28,14 @@ function toInventoryItem(r) {
 
 // ── Reads ─────────────────────────────────────────────────────────────
 
-// Users lives on the ratecard spreadsheet, not the operational one - keeping
-// login credentials out of the same sheet as Accounts/Orders/etc. so the two
-// can be shared/permissioned separately.
-export async function login(ratecardId, opsId, username, password) {
+// Users lives on its own dedicated spreadsheet (loginId) - kept separate
+// from Accounts/Orders/etc. (which live on the ratecard spreadsheet, see
+// api/sheets.js) so login credentials never share a sheet with anything else.
+export async function login(loginId, ratecardId, username, password) {
   if (!username || !password) throw new Error("Username and password are required");
   const [{ [TAB_USERS]: users }, { [TAB_ACCOUNTS]: accounts }] = await Promise.all([
-    readManagedTabs(ratecardId, [TAB_USERS]),
-    readManagedTabs(opsId, [TAB_ACCOUNTS]),
+    readManagedTabs(loginId, [TAB_USERS]),
+    readManagedTabs(ratecardId, [TAB_ACCOUNTS]),
   ]);
 
   const match = users.find(
@@ -44,9 +44,13 @@ export async function login(ratecardId, opsId, username, password) {
   if (!match) throw new Error("Invalid username or password");
 
   const role = String(match.role) === "ops" ? "ops" : "b2b";
-  const accountId = role === "b2b" ? String(match.account_id || "") || undefined : undefined;
-  if (role === "b2b" && accountId && !accounts.some((a) => String(a.account_id) === accountId)) {
-    throw new Error(`User "${match.username}" is set up with an unknown account_id`);
+  let accountId;
+  if (role === "b2b") {
+    accountId = String(match.account_id || "").trim();
+    if (!accountId) throw new Error(`User "${match.username}" is set up as b2b but has no account_id - add one in the Users tab`);
+    if (!accounts.some((a) => String(a.account_id) === accountId)) {
+      throw new Error(`User "${match.username}" has account_id "${accountId}", which doesn't match any row in Accounts`);
+    }
   }
 
   return {
