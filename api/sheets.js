@@ -14,6 +14,7 @@ import {
   requestProduct,
   decideProductRequests,
   addTierRowHighlighting,
+  removeTierRowHighlighting,
   withLock,
 } from "../server/actions.js";
 
@@ -81,6 +82,7 @@ export default async function handler(req, res) {
       // spreadsheetId override so it can be dry-run against a scratch copy
       // before ever touching the real ratecard.
       case "addTierRowHighlighting": data = await addTierRowHighlighting(body.spreadsheetId || ratecardId); break;
+      case "removeTierRowHighlighting": data = await removeTierRowHighlighting(body.spreadsheetId || ratecardId); break;
 
       default:
         res.status(200).json({ ok: false, error: "Unknown action: " + body.action });

@@ -444,4 +444,24 @@ export async function addTierRowHighlighting(ratecardId) {
   return { sheetsUpdated: targetSheetIds.size, rulesAdded: requests.length, rulesCleared: deletes.length };
 }
 
+/** Undoes addTierRowHighlighting - strips every conditional format rule from the two ratecard tabs, no replacement. */
+export async function removeTierRowHighlighting(ratecardId) {
+  const sheets = await listSheets(ratecardId);
+  const byTitle = new Map(sheets.map((s) => [s.title, s.sheetId]));
+  const ruleCounts = await getConditionalFormatRuleCounts(ratecardId);
+
+  const targetSheetIds = ["Standard Grammage", "One Serving Pack"]
+    .map((title) => byTitle.get(title))
+    .filter((id) => id !== undefined);
+
+  const deletes = [];
+  for (const sheetId of targetSheetIds) {
+    const existing = ruleCounts.get(sheetId) || 0;
+    for (let i = existing - 1; i >= 0; i--) deletes.push({ deleteConditionalFormatRule: { sheetId, index: i } });
+  }
+
+  await batchUpdateSpreadsheet(ratecardId, deletes);
+  return { sheetsUpdated: targetSheetIds.length, rulesCleared: deletes.length };
+}
+
 export { withLock };
