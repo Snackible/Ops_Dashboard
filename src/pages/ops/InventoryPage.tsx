@@ -3,6 +3,7 @@ import { dataClient } from "../../lib/data";
 import { liveStore, useLiveStore } from "../../lib/data/liveStore";
 import { notificationStore } from "../../lib/integrations/notificationStore";
 import { LoadingState } from "../../components/Spinner";
+import { EmptyState } from "../../components/EmptyState";
 import { RefreshButton } from "../../components/RefreshButton";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
 import { digitFitFontSizePx, isLargerPack } from "../../lib/inventory";
@@ -104,6 +105,7 @@ export function InventoryPage() {
   const loading = !inventoryReady;
   const [category, setCategory] = useState("All");
   const [tierFilter, setTierFilter] = useState<TierFilter>("all");
+  const [search, setSearch] = useState("");
 
   // Edits are held here rather than sent immediately - the Update button
   // flushes everything collected so far as one batched request (see
@@ -119,7 +121,10 @@ export function InventoryPage() {
 
   const categories = useMemo(() => ["All", ...Array.from(new Set(items.map((i) => i.category)))], [items]);
   const filtered = items.filter(
-    (i) => (category === "All" || i.category === category) && (tierFilter === "all" || i.tier === tierFilter)
+    (i) =>
+      (category === "All" || i.category === category) &&
+      (tierFilter === "all" || i.tier === tierFilter) &&
+      i.productName.toLowerCase().includes(search.toLowerCase())
   );
 
   // Grouped by category so a long list can be scanned/worked category by
@@ -205,17 +210,25 @@ export function InventoryPage() {
             {loading ? "Loading…" : `${items.length} SKUs from the ratecard. Stock starts at 0 until counted.`}
           </p>
         </div>
-        <select
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          className="rounded-md border border-line bg-paper-raised px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
-        >
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search products…"
+            className="w-full rounded-md border border-line bg-paper-raised px-3 py-2 text-sm placeholder:text-ink-faint transition-colors focus:outline-none focus:ring-2 focus:ring-accent sm:w-56"
+          />
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="rounded-md border border-line bg-paper-raised px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            {categories.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="mb-4 flex items-center gap-1.5">
@@ -243,12 +256,15 @@ export function InventoryPage() {
 
       {loading ? (
         <LoadingState label="Loading inventory…" />
+      ) : filtered.length === 0 ? (
+        <EmptyState title="No products match" body="Try a different search term, tier, or category." />
       ) : (
         <div className="columns-1 gap-4 pb-4 lg:columns-2 xl:columns-3">
           {groups.map(([cat, catItems]) => (
             <div key={cat} className="mb-4 break-inside-avoid">
-              <div className="mb-1 px-1 py-1 font-mono text-[10px] uppercase tracking-wide text-ink-faint">
-                {cat} · {catItems.length}
+              <div className="mb-1.5 flex items-baseline gap-2 border-b-2 border-accent/40 px-1 pb-1.5">
+                <span className="font-display text-[15px] font-semibold text-ink">{cat}</span>
+                <span className="font-mono text-[11px] tabular-nums text-ink-faint">{catItems.length}</span>
               </div>
               <div className="divide-y divide-line rounded-lg border border-line">
                 {catItems.map((item) => (
