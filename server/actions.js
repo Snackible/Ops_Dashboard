@@ -391,12 +391,15 @@ export async function addTierRowHighlighting(ratecardId) {
     // An untiered product (blank Tier/Larger Pack Tier cell) defaults to
     // yellow rather than staying uncolored, so a missing tier reads as
     // "needs attention" instead of blending into the sheet's white background.
+    // Gated on Product Name (column B) being non-blank so category banner
+    // rows - which have no tier OR product name - don't get swept up too.
+    const row = startRowIndex + 1;
     for (const [formula, tier] of [
-      [`=$${tierColLetter}${startRowIndex + 1}="green"`, "green"],
-      [`=$${tierColLetter}${startRowIndex + 1}="yellow"`, "yellow"],
-      [`=$${tierColLetter}${startRowIndex + 1}="orange"`, "orange"],
-      [`=$${tierColLetter}${startRowIndex + 1}="red"`, "red"],
-      [`=$${tierColLetter}${startRowIndex + 1}=""`, "yellow"],
+      [`=$${tierColLetter}${row}="green"`, "green"],
+      [`=$${tierColLetter}${row}="yellow"`, "yellow"],
+      [`=$${tierColLetter}${row}="orange"`, "orange"],
+      [`=$${tierColLetter}${row}="red"`, "red"],
+      [`=AND($B${row}<>"", $${tierColLetter}${row}="")`, "yellow"],
     ]) {
       requests.push({
         addConditionalFormatRule: {
