@@ -197,6 +197,7 @@ export const mockDataClient: DataClient = {
       }),
     };
     db.requests.unshift(request);
+    eventBus.emit("OrderCommitted", { request });
 
     for (const li of wanted) {
       if (!li.backorderQty) continue;

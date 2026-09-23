@@ -8,6 +8,7 @@ import type { StockRequest, InventoryItem, ProductRequest } from "./types";
  * or in the request/inventory logic that triggers these events.
  */
 export interface DomainEvents {
+  OrderCommitted: { request: StockRequest };
   RequestSubmitted: { request: StockRequest };
   RequestApproved: { request: StockRequest };
   RequestDeclined: { request: StockRequest };

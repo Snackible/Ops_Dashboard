@@ -42,6 +42,7 @@ export function startSheetsPolling(requestsIntervalMs = 6000, productRequestsInt
         lastSeen.set(request.requestId, request.status);
         if (!requestsSeeded || previous === request.status) continue;
 
+        if (request.status === "committed") eventBus.emit("OrderCommitted", { request });
         if (request.status === "pending") eventBus.emit("RequestSubmitted", { request });
         if (request.status === "approved") eventBus.emit("RequestApproved", { request });
         if (request.status === "declined") eventBus.emit("RequestDeclined", { request });

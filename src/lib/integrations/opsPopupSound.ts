@@ -5,6 +5,20 @@ import { dataClient } from "../data";
 
 /** Subscriber #1 on the event bus: alerts whoever is on the Ops dashboard when a new request lands. */
 export function registerOpsPopupSound(): void {
+  // Just visibility, not a call to action - nothing to approve until B2B
+  // pushes it, so this stays a quiet info toast rather than the heavier
+  // "New request" alert below.
+  eventBus.on("OrderCommitted", async ({ request }) => {
+    if (getCurrentUser()?.role !== "ops") return;
+    const account = await dataClient.getAccount(request.accountId);
+    const who = request.requestedByName ? `${request.requestedByName} at ${account?.companyName ?? "a B2B account"}` : account?.companyName ?? "A B2B account";
+    notificationStore.push({
+      kind: "info",
+      title: "Order committed",
+      body: `${who} committed an order — reserved from stock, not pushed yet.`,
+    });
+  });
+
   eventBus.on("RequestSubmitted", async ({ request }) => {
     if (getCurrentUser()?.role !== "ops") return;
     const account = await dataClient.getAccount(request.accountId);
