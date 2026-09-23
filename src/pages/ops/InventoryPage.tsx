@@ -6,11 +6,18 @@ import { LoadingState } from "../../components/Spinner";
 import { EmptyState } from "../../components/EmptyState";
 import { RefreshButton } from "../../components/RefreshButton";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
-import { digitFitFontSizePx, isLargerPack } from "../../lib/inventory";
+import { digitFitFontSizePx, isLargerPack, isOneServingPack } from "../../lib/inventory";
 import { TierPicker } from "../../components/TierPicker";
 import type { InventoryItem, Tier } from "../../lib/types";
 
 type TierFilter = "all" | Tier;
+type PackFilter = "all" | "standard" | "larger" | "single";
+
+function packOf(skuId: string): Exclude<PackFilter, "all"> {
+  if (isLargerPack(skuId)) return "larger";
+  if (isOneServingPack(skuId)) return "single";
+  return "standard";
+}
 
 /**
  * A stock count field synced to the server can't be fully controlled by the
@@ -74,6 +81,7 @@ function InventoryRow({
         <p className="truncate text-[12.5px] leading-tight">
           {item.productName}
           {isLargerPack(item.skuId) && <span className="ml-1 font-semibold text-accent-ink">(L)</span>}
+          {isOneServingPack(item.skuId) && <span className="ml-1 font-semibold text-accent-ink">(S)</span>}
         </p>
         <p className="font-mono text-[10px] tabular-nums text-ink-faint">
           {item.grammageG}g · ₹{item.mrpInr}
@@ -105,6 +113,7 @@ export function InventoryPage() {
   const loading = !inventoryReady;
   const [category, setCategory] = useState("All");
   const [tierFilter, setTierFilter] = useState<TierFilter>("all");
+  const [packFilter, setPackFilter] = useState<PackFilter>("all");
   const [search, setSearch] = useState("");
 
   // Edits are held here rather than sent immediately - the Update button
@@ -124,6 +133,7 @@ export function InventoryPage() {
     (i) =>
       (category === "All" || i.category === category) &&
       (tierFilter === "all" || i.tier === tierFilter) &&
+      (packFilter === "all" || packOf(i.skuId) === packFilter) &&
       i.productName.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -227,6 +237,16 @@ export function InventoryPage() {
                 {c}
               </option>
             ))}
+          </select>
+          <select
+            value={packFilter}
+            onChange={(e) => setPackFilter(e.target.value as PackFilter)}
+            className="rounded-md border border-line bg-paper-raised px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="all">All pack types</option>
+            <option value="standard">Standard</option>
+            <option value="larger">Larger pack (L)</option>
+            <option value="single">One serving (S)</option>
           </select>
         </div>
       </div>

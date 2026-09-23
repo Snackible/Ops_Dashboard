@@ -73,7 +73,10 @@ export function MyRequestsPage() {
             >
               <div className="mb-3 flex items-center justify-between">
                 <div>
-                  <p className="font-mono text-[11px] text-ink-faint">{req.requestId}</p>
+                  <p className="font-mono text-[11px] text-ink-faint">
+                    {req.requestId}
+                    {req.requestedByName && <span className="text-ink-soft"> · {req.requestedByName}</span>}
+                  </p>
                   <p className="text-[12.5px] text-ink-soft">
                     Pushed {req.submittedAt ? new Date(req.submittedAt).toLocaleString() : "—"}
                   </p>
@@ -96,13 +99,19 @@ export function MyRequestsPage() {
                 ))}
               </div>
 
+              {(req.status === "approved" || req.status === "declined") && req.decidedBy && (
+                <p className="mt-3 text-[12px] text-ink-faint">
+                  {req.status === "approved" ? "Approved" : "Declined"} by {req.decidedBy}
+                  {req.decidedAt && ` · ${new Date(req.decidedAt).toLocaleString()}`}
+                </p>
+              )}
               {req.decisionNote && (
-                <p className="mt-3 rounded-md bg-paper px-3 py-2 text-[13px] text-ink-soft">
+                <p className="mt-1.5 rounded-md bg-paper px-3 py-2 text-[13px] text-ink-soft">
                   Note from Ops: {req.decisionNote}
                 </p>
               )}
               {req.status === "declined" && !req.decisionNote && (
-                <p className="mt-3 rounded-md bg-paper px-3 py-2 text-[13px] text-ink-soft">
+                <p className="mt-1.5 rounded-md bg-paper px-3 py-2 text-[13px] text-ink-soft">
                   Declined — reserved stock has been released back to the catalog.
                 </p>
               )}
@@ -135,6 +144,11 @@ export function MyRequestsPage() {
                   </div>
                   {r.status === "on_hold" && r.holdUntil && (
                     <p className="mt-1.5 text-[12.5px] text-ink-soft">On hold until {new Date(r.holdUntil).toLocaleDateString()}</p>
+                  )}
+                  {r.status !== "pending" && r.decidedBy && (
+                    <p className="mt-1.5 text-[12px] text-ink-faint">
+                      {c.label} by {r.decidedBy}
+                    </p>
                   )}
                 </div>
               );

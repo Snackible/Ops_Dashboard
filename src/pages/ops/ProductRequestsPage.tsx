@@ -193,6 +193,9 @@ export function ProductRequestsPage() {
                             until {new Date(r.holdUntil).toLocaleDateString()}
                           </p>
                         )}
+                        {r.decidedBy && (
+                          <p className="font-mono text-[10.5px] text-ink-faint">by {r.decidedBy}</p>
+                        )}
                       </div>
                       <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 font-mono text-[11px] font-medium ${c.classes}`}>
                         {c.label}

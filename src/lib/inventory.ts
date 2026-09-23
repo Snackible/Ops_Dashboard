@@ -8,6 +8,11 @@ export function isLargerPack(skuId: string): boolean {
   return skuId.includes("-larger-pack");
 }
 
+/** Same exact-suffix signal as isLargerPack, for rows built off the ratecard's "One Serving Pack" tab. */
+export function isOneServingPack(skuId: string): boolean {
+  return skuId.includes("-one-serving-pack");
+}
+
 /**
  * A fixed-width qty/stock input has room for about 4 digits at the default
  * size before the browser starts scrolling the value to keep the cursor in
