@@ -39,7 +39,7 @@ function GroupCard({
     if ((status === "on_hold" || status === "accepted") && !holdUntil) return;
     setBusy(status);
     try {
-      await dataClient.decideProductRequests(group.skuId, user.name, status, status === "on_hold" ? holdUntil : null);
+      await dataClient.decideProductRequests(group.skuId, user.name, status, status === "on_hold" || status === "accepted" ? holdUntil : null);
       onDecided();
     } catch (err) {
       notificationStore.push({

@@ -220,7 +220,7 @@ export function InventoryPage() {
             {loading ? "Loading…" : `${items.length} SKUs from the ratecard. Stock starts at 0 until counted.`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -230,7 +230,7 @@ export function InventoryPage() {
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="rounded-md border border-line bg-paper-raised px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full rounded-md border border-line bg-paper-raised px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-accent sm:w-auto"
           >
             {categories.map((c) => (
               <option key={c} value={c}>
@@ -241,7 +241,7 @@ export function InventoryPage() {
           <select
             value={packFilter}
             onChange={(e) => setPackFilter(e.target.value as PackFilter)}
-            className="rounded-md border border-line bg-paper-raised px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full rounded-md border border-line bg-paper-raised px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-accent sm:w-auto"
           >
             <option value="all">All pack types</option>
             <option value="standard">Standard</option>
