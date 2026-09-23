@@ -322,6 +322,8 @@ export const mockDataClient: DataClient = {
   },
 
   async decideProductRequests(skuId, decidedBy, status, holdUntil) {
+    const needsDate = status === "accepted" || status === "on_hold";
+    if (needsDate && !holdUntil) throw new Error(`A date is required to ${status === "accepted" ? "accept" : "hold"} a production request`);
     const decidedAt = new Date().toISOString();
     const decided: ProductRequest[] = [];
     for (const r of db.productRequests) {
@@ -329,7 +331,7 @@ export const mockDataClient: DataClient = {
         r.status = status as ProductRequestStatus;
         r.decidedAt = decidedAt;
         r.decidedBy = decidedBy;
-        r.holdUntil = status === "on_hold" ? holdUntil : null;
+        r.holdUntil = needsDate ? holdUntil : null;
         decided.push(r);
       }
     }

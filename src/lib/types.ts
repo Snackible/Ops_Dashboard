@@ -83,7 +83,7 @@ export interface ProductRequest {
   createdAt: string;
   decidedAt: string | null;
   decidedBy: string | null;
-  /** Only meaningful when status is "on_hold". */
+  /** Required on "accepted" (expected-by date) and "on_hold" (revisit date); null otherwise. */
   holdUntil: string | null;
   /**
    * The StockRequest this backorder belongs to, when it was created as the

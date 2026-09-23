@@ -352,6 +352,11 @@ export async function requestProduct(ratecardId, opsId, accountId, skuId, qty, n
 
 export async function decideProductRequests(opsId, skuId, decidedBy, status, holdUntil) {
   if (["accepted", "declined", "on_hold"].indexOf(status) === -1) throw new Error("Unknown status " + status);
+  // Accepting means production has been committed to - it needs an expected
+  // delivery date for the same reason a hold needs a revisit date, so B2B
+  // isn't left with an open-ended "yes" and no idea when to expect it.
+  const needsDate = status === "accepted" || status === "on_hold";
+  if (needsDate && !holdUntil) throw new Error(`A date is required to ${status === "accepted" ? "accept" : "hold"} a production request`);
 
   const { [TAB_PRODUCT_REQUESTS]: rows } = await readManagedTabs(opsId, [TAB_PRODUCT_REQUESTS]);
   const decidedAt = new Date().toISOString();
@@ -361,11 +366,11 @@ export async function decideProductRequests(opsId, skuId, decidedBy, status, hol
     await writeCell(opsId, TAB_PRODUCT_REQUESTS, row.__row, "status", status);
     await writeCell(opsId, TAB_PRODUCT_REQUESTS, row.__row, "decided_at", decidedAt);
     await writeCell(opsId, TAB_PRODUCT_REQUESTS, row.__row, "decided_by", decidedBy || "");
-    await writeCell(opsId, TAB_PRODUCT_REQUESTS, row.__row, "hold_until", status === "on_hold" ? (holdUntil || "") : "");
+    await writeCell(opsId, TAB_PRODUCT_REQUESTS, row.__row, "hold_until", needsDate ? holdUntil : "");
     row.status = status;
     row.decided_at = decidedAt;
     row.decided_by = decidedBy || "";
-    row.hold_until = status === "on_hold" ? (holdUntil || "") : "";
+    row.hold_until = needsDate ? holdUntil : "";
   }
 
   return pending.map(toProductRequest);

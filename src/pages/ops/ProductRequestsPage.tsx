@@ -36,7 +36,7 @@ function GroupCard({
 
   async function decide(status: Exclude<ProductRequestStatus, "pending">) {
     if (!user) return;
-    if (status === "on_hold" && !holdUntil) return;
+    if ((status === "on_hold" || status === "accepted") && !holdUntil) return;
     setBusy(status);
     try {
       await dataClient.decideProductRequests(group.skuId, user.name, status, status === "on_hold" ? holdUntil : null);
@@ -84,6 +84,7 @@ function GroupCard({
           type="date"
           value={holdUntil}
           onChange={(e) => setHoldUntil(e.target.value)}
+          title="Expected by / revisit date - required to accept or hold"
           className="rounded-md border border-line bg-paper px-2 py-1.5 text-[13px] transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <button
@@ -103,7 +104,8 @@ function GroupCard({
         </button>
         <button
           onClick={() => decide("accepted")}
-          disabled={busy !== null}
+          disabled={busy !== null || !holdUntil}
+          title={!holdUntil ? "Pick an expected-by date to accept" : undefined}
           className="ml-auto rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-60"
         >
           {busy === "accepted" ? "Accepting…" : "Accept"}
@@ -188,9 +190,9 @@ export function ProductRequestsPage() {
                           {inventoryBySku.get(r.skuId)?.productName ?? r.skuId} × {r.qty} —{" "}
                           {accountsById.get(r.accountId)?.companyName ?? r.accountId}
                         </p>
-                        {r.status === "on_hold" && r.holdUntil && (
+                        {(r.status === "on_hold" || r.status === "accepted") && r.holdUntil && (
                           <p className="font-mono text-[10.5px] text-ink-faint">
-                            until {new Date(r.holdUntil).toLocaleDateString()}
+                            {r.status === "on_hold" ? "until" : "expected by"} {new Date(r.holdUntil).toLocaleDateString()}
                           </p>
                         )}
                         {r.decidedBy && (

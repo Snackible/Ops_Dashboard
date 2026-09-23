@@ -145,6 +145,9 @@ export function MyRequestsPage() {
                   {r.status === "on_hold" && r.holdUntil && (
                     <p className="mt-1.5 text-[12.5px] text-ink-soft">On hold until {new Date(r.holdUntil).toLocaleDateString()}</p>
                   )}
+                  {r.status === "accepted" && r.holdUntil && (
+                    <p className="mt-1.5 text-[12.5px] text-ink-soft">Expected by {new Date(r.holdUntil).toLocaleDateString()}</p>
+                  )}
                   {r.status !== "pending" && r.decidedBy && (
                     <p className="mt-1.5 text-[12px] text-ink-faint">
                       {c.label} by {r.decidedBy}
