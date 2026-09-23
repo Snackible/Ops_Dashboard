@@ -26,7 +26,6 @@ class NotificationStore {
     this.toasts = [...this.toasts, withId];
     this.emit();
     playChime(toast.kind);
-    setTimeout(() => this.dismiss(withId.id), 6000);
   }
 
   dismiss(id: string): void {
