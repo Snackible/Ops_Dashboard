@@ -5,6 +5,7 @@ import { notificationStore } from "../../lib/integrations/notificationStore";
 import { LoadingState } from "../../components/Spinner";
 import { EmptyState } from "../../components/EmptyState";
 import { RefreshButton } from "../../components/RefreshButton";
+import { Select } from "../../components/Select";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
 import { digitFitFontSizePx, isLargerPack, isOneServingPack } from "../../lib/inventory";
 import { TierPicker } from "../../components/TierPicker";
@@ -227,27 +228,19 @@ export function InventoryPage() {
             placeholder="Search products…"
             className="w-full rounded-md border border-line bg-paper-raised px-3 py-2 text-sm placeholder:text-ink-faint transition-colors focus:outline-none focus:ring-2 focus:ring-accent sm:w-56"
           />
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="w-full rounded-md border border-line bg-paper-raised px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-accent sm:w-auto"
-          >
+          <Select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full sm:w-auto">
             {categories.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
             ))}
-          </select>
-          <select
-            value={packFilter}
-            onChange={(e) => setPackFilter(e.target.value as PackFilter)}
-            className="w-full rounded-md border border-line bg-paper-raised px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-accent sm:w-auto"
-          >
+          </Select>
+          <Select value={packFilter} onChange={(e) => setPackFilter(e.target.value as PackFilter)} className="w-full sm:w-auto">
             <option value="all">All pack types</option>
             <option value="standard">Standard</option>
             <option value="larger">Larger pack (L)</option>
             <option value="single">One serving (S)</option>
-          </select>
+          </Select>
         </div>
       </div>
 
