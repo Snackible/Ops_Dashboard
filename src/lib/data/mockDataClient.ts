@@ -158,7 +158,7 @@ export const mockDataClient: DataClient = {
     return tick(db.accounts.find((a) => a.accountId === accountId));
   },
 
-  async commitOrder(accountId, lineItems, requestedByName) {
+  async commitOrder(accountId, lineItems, requestedByName, clientName) {
     const wanted = lineItems.filter((li) => li.qty > 0);
     if (wanted.length === 0) throw new Error("Add at least one item before committing");
 
@@ -186,6 +186,7 @@ export const mockDataClient: DataClient = {
       decidedBy: null,
       decisionNote: null,
       requestedByName: requestedByName || null,
+      clientName: clientName || null,
       lineItems: wanted.map((li) => {
         const item = findInventory(li.skuId);
         const backorderQty = li.backorderQty || 0;

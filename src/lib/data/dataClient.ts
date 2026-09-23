@@ -42,7 +42,8 @@ export interface DataClient {
   commitOrder(
     accountId: string,
     lineItems: { skuId: string; qty: number; backorderQty: number }[],
-    requestedByName: string | null
+    requestedByName: string | null,
+    clientName: string | null
   ): Promise<StockRequest>;
 
   /** Committed-but-not-yet-pushed orders for an account — the "Committed" tab. */

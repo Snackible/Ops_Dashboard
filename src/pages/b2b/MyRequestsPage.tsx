@@ -77,6 +77,7 @@ export function MyRequestsPage() {
                     {req.requestId}
                     {req.requestedByName && <span className="text-ink-soft"> · {req.requestedByName}</span>}
                   </p>
+                  {req.clientName && <p className="text-[12.5px] font-medium">For {req.clientName}</p>}
                   <p className="text-[12.5px] text-ink-soft">
                     Pushed {req.submittedAt ? new Date(req.submittedAt).toLocaleString() : "—"}
                   </p>

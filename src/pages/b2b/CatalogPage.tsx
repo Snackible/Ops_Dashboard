@@ -8,11 +8,18 @@ import { LoadingState } from "../../components/Spinner";
 import { EmptyState } from "../../components/EmptyState";
 import { RefreshButton } from "../../components/RefreshButton";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
-import { digitFitFontSizePx, isLargerPack } from "../../lib/inventory";
+import { digitFitFontSizePx, isLargerPack, isOneServingPack } from "../../lib/inventory";
 import type { InventoryItem, Tier } from "../../lib/types";
 
 type Stage = "browsing" | "preview";
 type TierFilter = "all" | Tier;
+type PackFilter = "all" | "standard" | "larger" | "single";
+
+function packOf(skuId: string): Exclude<PackFilter, "all"> {
+  if (isLargerPack(skuId)) return "larger";
+  if (isOneServingPack(skuId)) return "single";
+  return "standard";
+}
 
 function CatalogRow({
   item,
@@ -38,6 +45,7 @@ function CatalogRow({
           <p className="truncate text-[13.5px] font-medium leading-tight">
             {item.productName}
             {isLargerPack(item.skuId) && <span className="ml-1 font-semibold text-accent-ink" title="Larger Pack">(L)</span>}
+            {isOneServingPack(item.skuId) && <span className="ml-1 font-semibold text-accent-ink" title="One Serving Pack">(S)</span>}
           </p>
           <span
             className={`shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10.5px] font-semibold tabular-nums ${stockBadge.cls}`}
@@ -94,11 +102,13 @@ export function CatalogPage() {
   const loading = !inventoryReady;
   const [tierFilter, setTierFilter] = useState<TierFilter>("all");
   const [category, setCategory] = useState<string>("All");
+  const [packFilter, setPackFilter] = useState<PackFilter>("all");
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [stage, setStage] = useState<Stage>("browsing");
   const [busy, setBusy] = useState(false);
   const [splitOrder, setSplitOrder] = useState(false);
+  const [clientName, setClientName] = useState("");
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -111,9 +121,10 @@ export function CatalogPage() {
           i.active &&
           (tierFilter === "all" || i.tier === tierFilter) &&
           (category === "All" || i.category === category) &&
+          (packFilter === "all" || packOf(i.skuId) === packFilter) &&
           i.productName.toLowerCase().includes(search.toLowerCase())
       ),
-    [items, tierFilter, category, search]
+    [items, tierFilter, category, packFilter, search]
   );
 
   interface CartLine {
@@ -162,7 +173,8 @@ export function CatalogPage() {
         await dataClient.commitOrder(
           user.accountId,
           group.map((l) => ({ skuId: l.skuId, qty: l.qty, backorderQty: l.backorderQty })),
-          user.name
+          user.name,
+          clientName.trim() || null
         );
       }
 
@@ -181,6 +193,7 @@ export function CatalogPage() {
 
       setCart({});
       setSplitOrder(false);
+      setClientName("");
       setStage("browsing");
       navigate("/b2b/committed");
     } catch (err) {
@@ -201,6 +214,16 @@ export function CatalogPage() {
     return (
       <div className="mx-auto max-w-xl">
         <h1 className="font-display text-2xl font-semibold">Review order</h1>
+
+        <label className="mb-4 block">
+          <span className="text-sm text-ink-soft">Client name (optional)</span>
+          <input
+            value={clientName}
+            onChange={(e) => setClientName(e.target.value)}
+            placeholder="Which of your customers is this for?"
+            className="mt-1 w-full rounded-md border border-line bg-paper-raised px-3 py-2 text-sm placeholder:text-ink-faint transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </label>
 
         {showSplitToggle && (
           <label className="mb-4 flex items-center gap-2 rounded-md border border-line bg-paper-raised px-3 py-2.5 text-[13px]">
@@ -315,6 +338,16 @@ export function CatalogPage() {
               {c}
             </option>
           ))}
+        </select>
+        <select
+          value={packFilter}
+          onChange={(e) => setPackFilter(e.target.value as PackFilter)}
+          className="rounded-md border border-line bg-paper-raised px-2.5 py-1 text-[13px] transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+        >
+          <option value="all">All pack types</option>
+          <option value="standard">Standard</option>
+          <option value="larger">Larger pack (L)</option>
+          <option value="single">One serving (S)</option>
         </select>
       </div>
 

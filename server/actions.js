@@ -103,6 +103,7 @@ function buildRequests(orderRows, lineRows, accountId) {
       decidedBy: r.decided_by ? String(r.decided_by) : null,
       decisionNote: r.decision_note ? String(r.decision_note) : null,
       requestedByName: r.requested_by_name ? String(r.requested_by_name) : null,
+      clientName: r.client_name ? String(r.client_name) : null,
       lineItems: lineRows
         .filter((li) => String(li.request_id) === String(r.request_id))
         .map((li) => ({
@@ -193,7 +194,7 @@ export async function updateInventoryFields(ratecardId, updates) {
   return Array.from(touched.values()).map(toInventoryItem);
 }
 
-export async function commitOrder(ratecardId, opsId, accountId, lineItems, requestedByName) {
+export async function commitOrder(ratecardId, opsId, accountId, lineItems, requestedByName, clientName) {
   const wanted = (lineItems || []).filter((li) => Number(li.qty) > 0);
   if (wanted.length === 0) throw new Error("Add at least one item before committing");
 
@@ -226,6 +227,7 @@ export async function commitOrder(ratecardId, opsId, accountId, lineItems, reque
   await appendRows(opsId, TAB_ORDERS, [{
     request_id: requestId, account_id: accountId, status: "committed", created_at: createdAt,
     submitted_at: "", decided_at: "", decided_by: "", decision_note: "", requested_by_name: requestedByName || "",
+    client_name: clientName || "",
   }]);
   await appendRows(opsId, TAB_ORDER_LINES, withLineIds.map((li) => ({
     line_item_id: li.lineItemId, request_id: requestId, sku_id: li.skuId,
@@ -243,6 +245,7 @@ export async function commitOrder(ratecardId, opsId, accountId, lineItems, reque
   return {
     requestId, accountId, status: "committed", createdAt,
     submittedAt: null, decidedAt: null, decidedBy: null, decisionNote: null, requestedByName: requestedByName || null,
+    clientName: clientName || null,
     lineItems: withLineIds.map((li) => ({
       lineItemId: li.lineItemId, skuId: li.skuId, qty: Number(li.qty), unitMrpSnapshot: Number(li.row.mrpInr), backorderQty: li.backorderQty,
     })),

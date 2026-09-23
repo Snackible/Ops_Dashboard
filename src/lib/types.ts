@@ -62,6 +62,8 @@ export interface StockRequest {
   lineItems: RequestLineItem[];
   /** Name of the B2B person who committed this order, so Ops knows who to ask about it. */
   requestedByName: string | null;
+  /** The B2B account's own end customer this order is for, if they tagged one - free text, not tied to any Account row. */
+  clientName: string | null;
 }
 
 /**

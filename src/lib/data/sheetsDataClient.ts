@@ -46,8 +46,8 @@ export const sheetsDataClient: DataClient = {
     return accounts.find((a) => a.accountId === accountId);
   },
 
-  commitOrder(accountId, lineItems, requestedByName) {
-    return callSheets<StockRequest>("commitOrder", { accountId, lineItems, requestedByName });
+  commitOrder(accountId, lineItems, requestedByName, clientName) {
+    return callSheets<StockRequest>("commitOrder", { accountId, lineItems, requestedByName, clientName });
   },
 
   getCommittedOrders(accountId) {

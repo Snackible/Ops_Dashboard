@@ -91,6 +91,7 @@ export function HistoryPage() {
                     {accountsById.get(req.accountId)?.companyName}
                     {req.requestedByName && <span className="font-normal text-ink-soft"> — {req.requestedByName}</span>}
                   </p>
+                  {req.clientName && <p className="text-[12.5px] text-ink-soft">For {req.clientName}</p>}
                   <p className="font-mono text-[11px] text-ink-faint">
                     {req.requestId} · decided {req.decidedAt ? new Date(req.decidedAt).toLocaleString() : ""} by{" "}
                     {req.decidedBy}

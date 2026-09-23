@@ -71,7 +71,7 @@ export default async function handler(req, res) {
       case "setActive": data = await withLock(opsId, () => setInventoryField(ratecardId, body.skuId, "active", body.active)); break;
       case "setTier": data = await withLock(opsId, () => setInventoryField(ratecardId, body.skuId, "tier", body.tier)); break;
       case "updateInventoryFields": data = await withLock(opsId, () => updateInventoryFields(ratecardId, body.updates)); break;
-      case "commitOrder": data = await withLock(opsId, () => commitOrder(ratecardId, opsId, body.accountId, body.lineItems, body.requestedByName)); break;
+      case "commitOrder": data = await withLock(opsId, () => commitOrder(ratecardId, opsId, body.accountId, body.lineItems, body.requestedByName, body.clientName)); break;
       case "pushOrder": data = await withLock(opsId, () => pushOrder(opsId, body.requestId)); break;
       case "cancelOrder": data = await withLock(opsId, () => cancelOrder(ratecardId, opsId, body.requestId)); break;
       case "decideRequest": data = await withLock(opsId, () => decideRequest(ratecardId, opsId, body.requestId, body.decidedBy, body.approve, body.decisionNote)); break;

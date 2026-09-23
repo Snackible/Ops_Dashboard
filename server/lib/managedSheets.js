@@ -18,7 +18,7 @@ export const TAB_LOCK = "Lock";
 
 export const COLUMNS = {
   [TAB_ACCOUNTS]: ["account_id", "company_name", "contact_name", "contact_email", "contact_phone"],
-  [TAB_ORDERS]: ["request_id", "account_id", "status", "created_at", "submitted_at", "decided_at", "decided_by", "decision_note", "requested_by_name"],
+  [TAB_ORDERS]: ["request_id", "account_id", "status", "created_at", "submitted_at", "decided_at", "decided_by", "decision_note", "requested_by_name", "client_name"],
   [TAB_ORDER_LINES]: ["line_item_id", "request_id", "sku_id", "qty", "unit_mrp_snapshot", "backorder_qty"],
   [TAB_FULFILLMENT]: ["date_fulfilled", "request_id", "company_name", "contact_name", "contact_phone", "category", "product_name", "qty", "unit_mrp", "line_total", "approved_by", "notes"],
   [TAB_PRODUCT_REQUESTS]: ["request_id", "account_id", "sku_id", "qty", "note", "status", "created_at", "decided_at", "decided_by", "hold_until", "linked_request_id"],

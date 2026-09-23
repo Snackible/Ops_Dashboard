@@ -95,6 +95,7 @@ export function CommittedOrdersPage() {
               <div className="mb-3 flex items-center justify-between">
                 <div>
                   <p className="font-mono text-[11px] text-ink-faint">{order.requestId}</p>
+                  {order.clientName && <p className="text-[12.5px] font-medium">For {order.clientName}</p>}
                   <p className="text-[12.5px] text-ink-soft">Committed {new Date(order.createdAt).toLocaleString()}</p>
                 </div>
                 <p className="font-mono text-sm tabular-nums text-ink-soft">₹{total}</p>
