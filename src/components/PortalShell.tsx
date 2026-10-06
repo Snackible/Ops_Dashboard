@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { useAuth } from "../lib/auth/AuthContext";
@@ -37,6 +37,14 @@ export function PortalShell({ brandLabel, navItems, children }: PortalShellProps
             </div>
             <div className="flex shrink-0 items-center gap-2 sm:gap-3">
               <span className="hidden text-sm text-ink-soft sm:inline">{user?.name}</span>
+              {user?.role === "admin" && (
+                <Link
+                  to={brandLabel === "Ops" ? "/b2b" : "/ops"}
+                  className="rounded-full border border-accent/40 px-2.5 py-1 text-[12px] text-accent-ink transition-colors hover:bg-accent-soft sm:px-3 sm:py-1.5 sm:text-[13px]"
+                >
+                  {brandLabel === "Ops" ? "B2B" : "Ops"} view
+                </Link>
+              )}
               <ThemeToggle />
               <button
                 onClick={handleSignOut}

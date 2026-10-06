@@ -20,6 +20,13 @@ export function getCurrentUser(): AuthUser | null {
   return currentUser;
 }
 
+/** Which dashboard the current user is acting in - an admin can be in either, so it follows the URL for them. */
+export function currentDashboard(): "ops" | "b2b" | null {
+  if (!currentUser) return null;
+  if (currentUser.role !== "admin") return currentUser.role;
+  return window.location.pathname.startsWith("/b2b") ? "b2b" : "ops";
+}
+
 export function signIn(user: AuthUser): void {
   currentUser = user;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(user));

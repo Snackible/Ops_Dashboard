@@ -1,4 +1,6 @@
 export type Role = "b2b" | "ops";
+/** "admin" isn't a dashboard of its own - it's allowed into both the Ops and B2B ones. */
+export type UserRole = Role | "admin";
 
 export type Tier = "green" | "yellow" | "orange" | "red";
 
@@ -113,6 +115,6 @@ export interface FulfillmentLogRow {
 export interface AuthUser {
   id: string;
   name: string;
-  role: Role;
+  role: UserRole;
   accountId?: string;
 }

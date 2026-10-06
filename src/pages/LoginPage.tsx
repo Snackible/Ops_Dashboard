@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth/AuthContext";
 import { dataClient } from "../lib/data";
 import { ThemeToggle } from "../theme/ThemeToggle";
@@ -19,7 +19,7 @@ export function LoginPage() {
     try {
       const user = await dataClient.login(username, password);
       signIn(user);
-      navigate(user.role === "ops" ? "/ops" : "/b2b");
+      navigate(user.role === "b2b" ? "/b2b" : "/ops");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't sign in");
     } finally {
@@ -74,6 +74,13 @@ export function LoginPage() {
             {busy ? "Signing in…" : "Sign in"}
           </button>
         </form>
+
+        <p className="mt-5 text-center text-[13px] text-ink-soft">
+          New here?{" "}
+          <Link to="/signup" className="font-medium text-accent-ink hover:underline">
+            Create a user
+          </Link>
+        </p>
       </div>
     </div>
   );

@@ -1,11 +1,11 @@
 import { eventBus } from "../events";
-import { getCurrentUser } from "../auth/authStore";
+import { currentDashboard, getCurrentUser } from "../auth/authStore";
 import { notificationStore } from "./notificationStore";
 import type { ProductRequest, StockRequest } from "../types";
 
 function notifyIfMine(accountId: string, kind: "success" | "danger" | "warning", title: string, body: string): void {
   const user = getCurrentUser();
-  if (user?.role !== "b2b" || user.accountId !== accountId) return;
+  if (currentDashboard() !== "b2b" || user?.accountId !== accountId) return;
   notificationStore.push({ kind, title, body });
 }
 

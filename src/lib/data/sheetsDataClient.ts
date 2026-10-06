@@ -17,6 +17,10 @@ export const sheetsDataClient: DataClient = {
     return callSheets<AuthUser>("login", { username, password });
   },
 
+  async createUser(username, password, role, masterPassword) {
+    await callSheets<unknown>("createUser", { username, password, role, masterPassword });
+  },
+
   getInventory() {
     return callSheets<InventoryItem[]>("getInventory");
   },

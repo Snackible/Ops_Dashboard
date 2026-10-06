@@ -38,10 +38,34 @@ function toInventoryItem(r) {
 // Users lives on its own dedicated spreadsheet (loginId) - kept separate
 // from Accounts/Orders/etc. (which live on the ratecard spreadsheet, see
 // api/sheets.js) so login credentials never share a sheet with anything else.
+const MASTER_USERNAME = "admin";
+const DEFAULT_MASTER_PASSWORD = "3355";
+
+const isMasterRow = (u) => String(u.username).trim().toLowerCase() === MASTER_USERNAME;
+
+/**
+ * The master password is simply the "admin" row's code in the Users sheet, so
+ * it's visible and editable right there. Seeded with a default the first time
+ * something needs it. The leading apostrophe stores the code as text -
+ * otherwise Sheets would turn "0420" into the number 420 and the leading zero
+ * would be gone by the time login compares it.
+ */
+async function readUsers(loginId, { seedAdmin }) {
+  let { [TAB_USERS]: users } = await readManagedTabs(loginId, [TAB_USERS]);
+  if (seedAdmin && !users.some(isMasterRow)) {
+    await appendRows(loginId, TAB_USERS, [
+      { username: MASTER_USERNAME, password: "'" + DEFAULT_MASTER_PASSWORD, role: "admin", account_id: "", display_name: "Admin" },
+    ]);
+    ({ [TAB_USERS]: users } = await readManagedTabs(loginId, [TAB_USERS]));
+  }
+  return users;
+}
+
 export async function login(loginId, ratecardId, username, password) {
   if (!username || !password) throw new Error("Username and password are required");
-  const [{ [TAB_USERS]: users }, { [TAB_ACCOUNTS]: accounts }] = await Promise.all([
-    readManagedTabs(loginId, [TAB_USERS]),
+  const wantsAdmin = String(username).trim().toLowerCase() === MASTER_USERNAME;
+  const [users, { [TAB_ACCOUNTS]: accounts }] = await Promise.all([
+    readUsers(loginId, { seedAdmin: wantsAdmin }),
     readManagedTabs(ratecardId, [TAB_ACCOUNTS]),
   ]);
 
@@ -50,9 +74,12 @@ export async function login(loginId, ratecardId, username, password) {
   );
   if (!match) throw new Error("Invalid username or password");
 
-  const role = String(match.role) === "ops" ? "ops" : "b2b";
+  const rawRole = String(match.role).trim().toLowerCase();
+  const role = rawRole === "ops" || rawRole === "admin" ? rawRole : "b2b";
   let accountId;
-  if (role === "b2b") {
+  // Admin gets an account too, so the B2B dashboard works for them (placing
+  // test orders etc.) the same way it does for any b2b login.
+  if (role !== "ops") {
     accountId = String(match.account_id || "").trim();
     if (accountId && !accounts.some((a) => String(a.account_id) === accountId)) {
       throw new Error(`User "${match.username}" has account_id "${accountId}", which doesn't match any row in Accounts`);
@@ -77,6 +104,28 @@ export async function login(loginId, ratecardId, username, password) {
     role,
     accountId,
   };
+}
+
+/** Adds a login to the Users sheet. Gated on the master password (the admin row's code) so it can't be used to mint accounts freely. */
+export async function createUser(loginId, username, password, role, masterPassword) {
+  const name = String(username || "").trim();
+  if (!name) throw new Error("Name is required");
+  if (!/^\d{4}$/.test(String(password || ""))) throw new Error("Code must be 4 digits");
+  if (role !== "ops" && role !== "b2b") throw new Error("Pick Ops or B2B");
+
+  const users = await readUsers(loginId, { seedAdmin: true });
+  const master = users.find(isMasterRow);
+  // Checked before the duplicate-name test so a wrong master password can't be
+  // used to probe which names already exist.
+  if (String(masterPassword || "") !== String(master.password)) throw new Error("Incorrect master password");
+  if (users.some((u) => String(u.username).trim().toLowerCase() === name.toLowerCase())) {
+    throw new Error(`"${name}" already exists`);
+  }
+
+  await appendRows(loginId, TAB_USERS, [
+    { username: name, password: "'" + password, role, account_id: "", display_name: name },
+  ]);
+  return { username: name, role };
 }
 
 export async function getInventory(ratecardId) {

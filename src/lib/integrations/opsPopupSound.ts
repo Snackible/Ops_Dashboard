@@ -1,5 +1,5 @@
 import { eventBus } from "../events";
-import { getCurrentUser } from "../auth/authStore";
+import { currentDashboard } from "../auth/authStore";
 import { notificationStore } from "./notificationStore";
 import { dataClient } from "../data";
 
@@ -9,7 +9,7 @@ export function registerOpsPopupSound(): void {
   // pushes it, so this stays a quiet info toast rather than the heavier
   // "New request" alert below.
   eventBus.on("OrderCommitted", async ({ request }) => {
-    if (getCurrentUser()?.role !== "ops") return;
+    if (currentDashboard() !== "ops") return;
     const account = await dataClient.getAccount(request.accountId);
     const who = request.requestedByName ? `${request.requestedByName} at ${account?.companyName ?? "a B2B account"}` : account?.companyName ?? "A B2B account";
     notificationStore.push({
@@ -20,7 +20,7 @@ export function registerOpsPopupSound(): void {
   });
 
   eventBus.on("RequestSubmitted", async ({ request }) => {
-    if (getCurrentUser()?.role !== "ops") return;
+    if (currentDashboard() !== "ops") return;
     const account = await dataClient.getAccount(request.accountId);
     const itemCount = request.lineItems.length;
     const totalQty = request.lineItems.reduce((sum, li) => sum + li.qty, 0);
@@ -33,7 +33,7 @@ export function registerOpsPopupSound(): void {
   });
 
   eventBus.on("ProductRequestSubmitted", async ({ request }) => {
-    if (getCurrentUser()?.role !== "ops") return;
+    if (currentDashboard() !== "ops") return;
     const [account, inventory] = await Promise.all([dataClient.getAccount(request.accountId), dataClient.getInventory()]);
     const item = inventory.find((i) => i.skuId === request.skuId);
     notificationStore.push({

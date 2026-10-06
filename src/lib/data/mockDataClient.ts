@@ -11,7 +11,10 @@ import type { DataClient } from "./dataClient";
  * localStorage since credentials aren't something local testing should reset
  * independently of a code change.
  */
-const mockUsers: { username: string; password: string; role: "ops" | "b2b"; accountId?: string }[] = [
+const MOCK_MASTER_PASSWORD = "3355";
+
+const mockUsers: { username: string; password: string; role: "ops" | "b2b" | "admin"; accountId?: string }[] = [
+  { username: "admin", password: MOCK_MASTER_PASSWORD, role: "admin", accountId: "acct-blue-orchard" },
   { username: "Priya", password: "4821", role: "ops" },
   { username: "Karan", password: "7093", role: "ops" },
   { username: "Rahul", password: "1620", role: "b2b", accountId: "acct-blue-orchard" },
@@ -106,6 +109,16 @@ export const mockDataClient: DataClient = {
     if (!match) throw new Error("Invalid username or password");
     const user: AuthUser = { id: `user-${match.username.toLowerCase()}`, name: match.username, role: match.role, accountId: match.accountId };
     return tick(user);
+  },
+
+  async createUser(username, password, role, masterPassword) {
+    const name = username.trim();
+    if (!name) throw new Error("Name is required");
+    if (!/^\d{4}$/.test(password)) throw new Error("Code must be 4 digits");
+    if (masterPassword !== MOCK_MASTER_PASSWORD) throw new Error("Incorrect master password");
+    if (mockUsers.some((u) => u.username.toLowerCase() === name.toLowerCase())) throw new Error(`"${name}" already exists`);
+    mockUsers.push({ username: name, password, role, accountId: role === "b2b" ? "acct-blue-orchard" : undefined });
+    await tick(undefined);
   },
 
   async getInventory() {

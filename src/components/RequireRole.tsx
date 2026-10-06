@@ -7,6 +7,7 @@ export function RequireRole({ role, children }: { role: Role; children: ReactNod
   const { user } = useAuth();
 
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role !== role) return <Navigate to={user.role === "ops" ? "/ops" : "/b2b"} replace />;
+  if (user.role === "admin") return <>{children}</>;
+  if (user.role !== role) return <Navigate to={user.role === "b2b" ? "/b2b" : "/ops"} replace />;
   return <>{children}</>;
 }

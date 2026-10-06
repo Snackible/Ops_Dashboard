@@ -1,5 +1,6 @@
 import {
   login,
+  createUser,
   getInventory,
   getAccounts,
   getRequests,
@@ -57,6 +58,7 @@ export default async function handler(req, res) {
     switch (body.action) {
       // reads
       case "login": data = await login(loginId, opsId, body.username, body.password); break;
+      case "createUser": data = await withLock(opsId, () => createUser(loginId, body.username, body.password, body.role, body.masterPassword)); break;
       case "getInventory": data = await getInventory(ratecardId); break;
       case "getAccounts": data = await getAccounts(opsId); break;
       case "getRequests": data = await getRequests(opsId, null); break;
