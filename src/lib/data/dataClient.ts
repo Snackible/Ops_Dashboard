@@ -25,9 +25,11 @@ export interface DataClient {
    * Applies several stock/active/tier edits in one network call and one
    * lock cycle instead of one per field - what the Inventory and Tiers
    * pages' "Update" buttons use to flush a batch of local edits at once.
+   * Field "add" bumps stock by `value` relative to whatever is stored when
+   * the call lands, rather than setting an absolute count.
    */
   updateInventoryFields(
-    updates: { skuId: string; field: "stock" | "active" | "tier"; value: number | boolean | Tier }[]
+    updates: { skuId: string; field: "stock" | "add" | "active" | "tier"; value: number | boolean | Tier }[]
   ): Promise<InventoryItem[]>;
 
   getAccounts(): Promise<B2BAccount[]>;

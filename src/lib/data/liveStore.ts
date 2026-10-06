@@ -64,6 +64,11 @@ export const liveStore = {
     const inventory = await dataClient.getInventory();
     setState({ inventory, inventoryReady: true });
   },
+  /** Folds items a write already returned straight into the list, so a save shows instantly without a second read. */
+  patchInventory(updated: InventoryItem[]): void {
+    const bySku = new Map(updated.map((i) => [i.skuId, i]));
+    setState({ inventory: state.inventory.map((i) => bySku.get(i.skuId) ?? i) });
+  },
   async refreshRequests(): Promise<void> {
     const requests = await dataClient.getRequests();
     setState({ requests, requestsReady: true });

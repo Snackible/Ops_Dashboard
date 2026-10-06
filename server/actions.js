@@ -220,7 +220,10 @@ export async function setInventoryField(ratecardId, skuId, field, value) {
  * field - see server/lib/sheetsClient.js#batchWriteRanges.
  */
 export async function updateInventoryFields(ratecardId, updates) {
-  const wanted = (updates || []).filter((u) => u && u.skuId && ["stock", "active", "tier"].indexOf(u.field) !== -1);
+  // "add" is a relative stock bump: the new count is computed here from the
+  // sheet's current value (under the route's lock), not from whatever the
+  // client last saw, so adding stock can't overwrite an order reserved since.
+  const wanted = (updates || []).filter((u) => u && u.skuId && ["stock", "add", "active", "tier"].indexOf(u.field) !== -1);
   if (wanted.length === 0) throw new Error("No updates to apply");
 
   const { rows, sheetMeta } = await readRatecardRows(ratecardId, MANAGED_TITLES);
@@ -231,9 +234,11 @@ export async function updateInventoryFields(ratecardId, updates) {
   for (const u of wanted) {
     const row = bySku.get(u.skuId);
     if (!row) throw new Error("Unknown SKU " + u.skuId);
-    const colIndex = await resolveRatecardColumn(sheetMeta, row, row.fields[u.field]);
-    ranges.push({ title: row.title, a1: `${colLetter(colIndex)}${row.row}`, value: u.value });
-    if (u.field === "stock") row.currentStock = Number(u.value) || 0;
+    const isAdd = u.field === "add";
+    const colIndex = await resolveRatecardColumn(sheetMeta, row, row.fields[isAdd ? "stock" : u.field]);
+    const value = isAdd ? row.currentStock + Math.max(0, Number(u.value) || 0) : u.value;
+    ranges.push({ title: row.title, a1: `${colLetter(colIndex)}${row.row}`, value });
+    if (u.field === "stock" || isAdd) row.currentStock = Number(value) || 0;
     if (u.field === "active") row.active = Boolean(u.value);
     if (u.field === "tier") row.tier = String(u.value).toLowerCase();
     touched.set(u.skuId, row);

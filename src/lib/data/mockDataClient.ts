@@ -154,6 +154,7 @@ export const mockDataClient: DataClient = {
     for (const u of updates) {
       const item = findInventory(u.skuId);
       if (u.field === "stock") item.currentStock = u.value as number;
+      if (u.field === "add") item.currentStock += Math.max(0, u.value as number);
       if (u.field === "active") item.active = u.value as boolean;
       if (u.field === "tier") item.tier = u.value as Tier;
       touched.set(u.skuId, item);
