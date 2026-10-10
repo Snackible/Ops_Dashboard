@@ -56,7 +56,7 @@ export function HistoryPage() {
               key={t}
               onClick={() => setTab(t)}
               className={`rounded-full px-4 py-1.5 text-[13px] transition-all ${
-                tab === t ? "bg-accent text-white font-medium" : "text-ink-soft hover:text-ink"
+                tab === t ? "bg-accent text-on-accent font-medium" : "text-ink-soft hover:text-ink"
               }`}
             >
               {t === "requests" ? "Decided requests" : "Fulfillment sheet"}
@@ -79,11 +79,11 @@ export function HistoryPage() {
           <SkeletonRow />
         </div>
       ) : tab === "requests" ? (
-        <div className="space-y-3">
+        <div className="stagger-in space-y-3">
           {filteredRequests.map((req) => (
             <div
               key={req.requestId}
-              className="rounded-lg border border-line bg-paper-raised p-4 transition-shadow hover:shadow-card"
+              className="surface rounded-lg p-4"
             >
               <div className="flex items-center justify-between">
                 <div>

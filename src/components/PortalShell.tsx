@@ -22,16 +22,22 @@ export function PortalShell({ brandLabel, navItems, children }: PortalShellProps
   }
 
   return (
-    <div className="min-h-screen bg-paper text-ink">
+    <div className="min-h-screen text-ink">
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
-      <header className="border-b border-line">
+      <header className="glass-header border-b border-line">
         <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6 sm:py-4">
           <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="shrink-0 font-display text-base font-semibold sm:text-lg">Snackible</span>
-              <span className="shrink-0 rounded-full border border-line px-2 py-0.5 font-mono text-[10px] text-ink-soft sm:px-2.5 sm:py-1 sm:text-[11px]">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span
+                aria-hidden="true"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-accent font-display text-[15px] font-bold leading-none text-on-accent shadow-card"
+              >
+                S
+              </span>
+              <span className="shrink-0 font-display text-base font-semibold tracking-tight sm:text-lg">Snackible</span>
+              <span className="shrink-0 rounded-md bg-accent-soft px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wider text-accent-ink sm:text-[11px]">
                 {brandLabel}
               </span>
             </div>
@@ -54,7 +60,7 @@ export function PortalShell({ brandLabel, navItems, children }: PortalShellProps
               </button>
             </div>
           </div>
-          <nav className="-mx-4 mt-2.5 flex items-center gap-1 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <nav aria-label="Primary" className="-mx-4 mt-2.5 flex items-center gap-1 overflow-x-auto px-4 sm:mx-0 sm:px-0">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}

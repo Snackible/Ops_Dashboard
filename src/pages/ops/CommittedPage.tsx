@@ -47,11 +47,11 @@ export function CommittedPage() {
         <EmptyState title="Nothing committed right now" body="Orders B2B has reserved but not pushed will show up here." />
       )}
 
-      <div className="space-y-4">
+      <div className="stagger-in space-y-4">
         {committed.map((order) => {
           const total = order.lineItems.reduce((sum, li) => sum + li.qty * li.unitMrpSnapshot, 0);
           return (
-            <div key={order.requestId} className="rounded-xl border border-line bg-paper-raised p-5 opacity-90 transition-shadow hover:shadow-card">
+            <div key={order.requestId} className="surface rounded-xl p-5 opacity-90">
               <div className="mb-3 flex items-center justify-between">
                 <div>
                   <p className="font-semibold">

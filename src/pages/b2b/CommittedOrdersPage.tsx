@@ -85,13 +85,13 @@ export function CommittedOrdersPage() {
         <EmptyState title="Nothing committed yet" body="Build an order from New Order, then commit it to see it here." />
       )}
 
-      <div className="space-y-4">
+      <div className="stagger-in space-y-4">
         {orders.map((order) => {
           const total = order.lineItems.reduce((sum, li) => sum + li.qty * li.unitMrpSnapshot, 0);
           const busy = pushingId === order.requestId;
           const canceling = cancelingId === order.requestId;
           return (
-            <div key={order.requestId} className="rounded-xl border border-line bg-paper-raised p-5 transition-shadow hover:shadow-card">
+            <div key={order.requestId} className="surface rounded-xl p-5">
               <div className="mb-3 flex items-center justify-between">
                 <div>
                   <p className="font-mono text-[11px] text-ink-faint">{order.requestId}</p>
@@ -121,7 +121,7 @@ export function CommittedOrdersPage() {
                 <button
                   onClick={() => push(order.requestId)}
                   disabled={busy || canceling}
-                  className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-60"
+                  className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-on-accent transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-60"
                 >
                   {busy ? "Pushing…" : "Push now"}
                 </button>

@@ -3,6 +3,7 @@ import { dataClient } from "../../lib/data";
 import { liveStore, useLiveStore } from "../../lib/data/liveStore";
 import { notificationStore } from "../../lib/integrations/notificationStore";
 import { RefreshButton } from "../../components/RefreshButton";
+import { Select } from "../../components/Select";
 import { TIER_CONFIG, TIER_ORDER } from "../../components/TierBadge";
 import { SkeletonCard } from "../../components/Skeleton";
 import { isLargerPack } from "../../lib/inventory";
@@ -148,24 +149,20 @@ export function TierBoardPage() {
             <button
               onClick={handleUpdate}
               disabled={pendingCount === 0 || updating}
-              className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40"
+              className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-on-accent transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40"
             >
               {updating ? "Updating…" : pendingCount > 0 ? `Update (${pendingCount})` : "Update"}
             </button>
           </div>
           <p className="text-sm text-ink-soft">Drag a product between columns to re-file it.</p>
         </div>
-        <select
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          className="rounded-md border border-line bg-paper-raised px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
-        >
+        <Select value={category} onChange={(e) => setCategory(e.target.value)}>
           {categories.map((c) => (
             <option key={c} value={c}>
               {c}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {loading ? (

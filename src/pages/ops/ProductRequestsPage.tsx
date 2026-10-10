@@ -53,7 +53,7 @@ function GroupCard({
   }
 
   return (
-    <div className="rounded-xl border border-line bg-paper-raised p-5 transition-shadow hover:shadow-card">
+    <div className="surface rounded-xl p-5">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <p className="font-semibold">{group.item?.productName ?? group.skuId}</p>
@@ -106,7 +106,7 @@ function GroupCard({
           onClick={() => decide("accepted")}
           disabled={busy !== null || !holdUntil}
           title={!holdUntil ? "Pick an expected-by date to accept" : undefined}
-          className="ml-auto rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-60"
+          className="ml-auto rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-on-accent transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-60"
         >
           {busy === "accepted" ? "Accepting…" : "Accept"}
         </button>
@@ -171,7 +171,7 @@ export function ProductRequestsPage() {
           {groups.length === 0 && (
             <EmptyState title="Nothing requested" body="A product request will show up here the moment B2B sends one." />
           )}
-          <div className="space-y-4">
+          <div className="stagger-in space-y-4">
             {groups.map((g) => (
               <GroupCard key={g.skuId} group={g} accountsById={accountsById} onDecided={liveStore.refreshProductRequests} />
             ))}

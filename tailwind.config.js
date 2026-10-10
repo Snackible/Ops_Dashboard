@@ -14,6 +14,7 @@ export default {
         accent: "var(--accent)",
         "accent-ink": "var(--accent-ink)",
         "accent-soft": "var(--accent-soft)",
+        "on-accent": "var(--on-accent)",
         success: "var(--success)",
         "success-soft": "var(--success-soft)",
         warning: "var(--warning)",
@@ -29,7 +30,7 @@ export default {
         mono: ["IBM Plex Mono", "ui-monospace", "monospace"],
       },
       boxShadow: {
-        card: "0 1px 2px rgba(35,36,29,0.06), 0 6px 20px -8px rgba(35,36,29,0.16)",
+        card: "0 1px 2px rgb(var(--shadow-rgb) / 0.07), 0 10px 28px -14px rgb(var(--shadow-rgb) / 0.26)",
       },
     },
   },

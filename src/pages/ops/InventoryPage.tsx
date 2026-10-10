@@ -332,7 +332,7 @@ export function InventoryPage() {
               <button
                 onClick={startAdd}
                 disabled={loading}
-                className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40"
+                className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-on-accent transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40"
               >
                 Add
               </button>
@@ -341,7 +341,7 @@ export function InventoryPage() {
                 <button
                   onClick={handleUpdate}
                   disabled={changeCount === 0 || updating}
-                  className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40"
+                  className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-on-accent transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40"
                 >
                   {updating ? "Updating…" : changeCount > 0 ? `Update (${changeCount})` : "Update"}
                 </button>

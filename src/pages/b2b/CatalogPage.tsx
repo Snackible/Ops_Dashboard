@@ -279,7 +279,7 @@ export function CatalogPage() {
           <button
             onClick={submitOrder}
             disabled={busy}
-            className="ml-auto rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-60"
+            className="ml-auto rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-60"
           >
             {busy ? "Committing…" : groups.length === 1 ? "Commit order" : `Commit ${groups.length} orders`}
           </button>
@@ -394,7 +394,7 @@ export function CatalogPage() {
             </span>
             <button
               onClick={() => setStage("preview")}
-              className="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.97]"
+              className="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-on-accent transition-all hover:opacity-90 active:scale-[0.97]"
             >
               Review order
             </button>

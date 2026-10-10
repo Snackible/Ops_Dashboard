@@ -16,7 +16,7 @@ export function ToastHost() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 flex w-80 flex-col gap-2">
+    <div className="fixed bottom-5 right-5 z-50 flex w-[min(20rem,calc(100vw-2.5rem))] flex-col gap-2">
       {toasts.map((t) => (
         <div
           key={t.id}

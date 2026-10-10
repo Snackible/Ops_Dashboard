@@ -63,13 +63,13 @@ export function MyRequestsPage() {
         <EmptyState title="No pushed orders yet" body="Commit some items on the Catalog page, then push to Ops." />
       )}
 
-      <div className="space-y-4">
+      <div className="stagger-in space-y-4">
         {requests.map((req) => {
           const total = req.lineItems.reduce((sum, li) => sum + li.qty * li.unitMrpSnapshot, 0);
           return (
             <div
               key={req.requestId}
-              className="rounded-xl border border-line bg-paper-raised p-5 transition-shadow hover:shadow-card"
+              className="surface rounded-xl p-5"
             >
               <div className="mb-3 flex items-center justify-between">
                 <div>

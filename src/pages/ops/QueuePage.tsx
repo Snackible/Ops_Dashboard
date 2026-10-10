@@ -48,7 +48,7 @@ function RequestCard({
   }
 
   return (
-    <div className="rounded-xl border border-line bg-paper-raised p-5 transition-shadow hover:shadow-card">
+    <div className="surface rounded-xl p-5">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <p className="font-semibold">
@@ -105,7 +105,7 @@ function RequestCard({
           onClick={() => decide(true)}
           disabled={busy !== null || blockedByProduction}
           title={blockedByProduction ? "Resolve the linked production request first" : undefined}
-          className="ml-auto rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
+          className="ml-auto rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-on-accent transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
         >
           {busy === "approve" ? "Approving…" : "Approve"}
         </button>
@@ -152,7 +152,7 @@ export function QueuePage() {
         <EmptyState title="Nothing waiting on you" body="A pushed order will pop up here the moment it lands." />
       )}
 
-      <div className="space-y-4">
+      <div className="stagger-in space-y-4">
         {pending.map((req) => (
           <RequestCard
             key={req.requestId}
