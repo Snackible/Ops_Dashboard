@@ -251,3 +251,20 @@ Other extension points already in place:
 
 Real authentication, per-account authorization on the Apps Script endpoint,
 and email/SMS notifications.
+
+## Encrypted PINs (shared logins sheet)
+
+Login PINs in the `Users` sheet are stored as salted scrypt hashes, never as
+plain digits. To set or reset a PIN, type the plain digits into the `password`
+cell; the next time any dashboard loads or someone logs in, it is replaced by a
+hash. Hashes can't be read back - a forgotten PIN is reset, not recovered.
+
+The logic is one self-contained file, `server/lib/pinVault.js` (only uses
+`node:crypto`), so other dashboards that share the same logins sheet can copy
+it in. The how-to is at the top of that file. Order matters: every dashboard
+must verify with `verifyPin()` **before** any of them starts hashing, or the
+ones still comparing plain text will stop accepting logins.
+
+Optional but recommended: set the same `PIN_PEPPER` env var on every dashboard.
+A 4-digit PIN only has 10,000 possibilities, so without a secret kept outside
+the sheet the hashes could be brute-forced by anyone who can read it.

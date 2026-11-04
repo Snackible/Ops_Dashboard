@@ -24,9 +24,10 @@ export const COLUMNS = {
   [TAB_PRODUCT_REQUESTS]: ["request_id", "account_id", "sku_id", "qty", "note", "status", "created_at", "decided_at", "decided_by", "hold_until", "linked_request_id"],
   /**
    * username: a name, matched case-insensitively at login.
-   * password: a plaintext 4-digit code (see server/actions.js#login) - fine
-   * for now per explicit sign-off, easy to swap for a hash later since it's
-   * compared in exactly one place.
+   * password: a 4-digit code, stored as a salted hash (see pinVault.js). To
+   * set or reset one, type the plain digits into the cell - the next run of
+   * any dashboard replaces them with a hash. Plain-text rows below are only
+   * the seed and are hashed the same way on first use.
    * role: "ops" or "b2b". account_id: required for "b2b", ignored for "ops" -
    * must match a row in Accounts. display_name: optional, falls back to
    * username when blank.

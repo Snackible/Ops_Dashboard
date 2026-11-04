@@ -24,6 +24,7 @@ import {
   MANAGED_TITLES,
 } from "./lib/managedSheets.js";
 import { withLock } from "./lib/lock.js";
+import { hashPin, verifyPin, secureStoredPins } from "./lib/pinVault.js";
 
 function toInventoryItem(r) {
   return {
@@ -53,12 +54,57 @@ const isMasterRow = (u) => String(u.username).trim().toLowerCase() === MASTER_US
 async function readUsers(loginId, { seedAdmin }) {
   let { [TAB_USERS]: users } = await readManagedTabs(loginId, [TAB_USERS]);
   if (seedAdmin && !users.some(isMasterRow)) {
+    // Stored hashed from the start - see pinVault.js. The default is only ever
+    // visible in this source file, never in the sheet.
     await appendRows(loginId, TAB_USERS, [
-      { username: MASTER_USERNAME, password: "'" + DEFAULT_MASTER_PASSWORD, role: "admin", account_id: "", display_name: "Admin" },
+      { username: MASTER_USERNAME, password: await hashPin(DEFAULT_MASTER_PASSWORD), role: "admin", account_id: "", display_name: "Admin" },
     ]);
     ({ [TAB_USERS]: users } = await readManagedTabs(loginId, [TAB_USERS]));
   }
+  await upgradePlainPins(loginId, users);
   return users;
+}
+
+const PASSWORD_COL_A1 = "B"; // column of "password" in COLUMNS[TAB_USERS]
+
+/**
+ * Replaces any plain-text PIN in the Users sheet with a hash (see pinVault.js).
+ * Runs on every login/signup read - a no-op unless a plain-text PIN exists, so
+ * typing a fresh PIN straight into the sheet gets secured the next time
+ * anyone uses a dashboard. A failure here is logged, never allowed to block
+ * login: the plain-text PIN still verifies, and the next run retries.
+ */
+async function upgradePlainPins(loginId, users) {
+  try {
+    return await secureStoredPins({
+      rows: users,
+      readRows: async () => (await readManagedTabs(loginId, [TAB_USERS]))[TAB_USERS],
+      writeCells: (updates) =>
+        batchWriteRanges(loginId, updates.map((u) => ({ title: TAB_USERS, a1: PASSWORD_COL_A1 + u.row, value: u.value }))),
+    });
+  } catch (err) {
+    console.error("Couldn't encrypt plain-text PINs in the Users sheet:", err);
+    return 0;
+  }
+}
+
+// A warm serverless instance skips the Users read for this long after a clean
+// check, so the boot-time call below can't eat into the Sheets read quota.
+const SECURE_CHECK_TTL_MS = 10 * 60 * 1000;
+const secureCheckedAt = new Map();
+
+/**
+ * Called once per browser session when the dashboard loads, so plain-text
+ * PINs get hashed even if nobody has logged in since they were typed in.
+ * Returns only a count - never any user data - so it's safe to leave open.
+ */
+export async function secureLogins(loginId) {
+  const last = secureCheckedAt.get(loginId) || 0;
+  if (Date.now() - last < SECURE_CHECK_TTL_MS) return { encrypted: 0, skipped: true };
+  const { [TAB_USERS]: users } = await readManagedTabs(loginId, [TAB_USERS]);
+  const encrypted = await upgradePlainPins(loginId, users);
+  secureCheckedAt.set(loginId, Date.now());
+  return { encrypted, skipped: false };
 }
 
 export async function login(loginId, ratecardId, username, password) {
@@ -69,9 +115,17 @@ export async function login(loginId, ratecardId, username, password) {
     readManagedTabs(ratecardId, [TAB_ACCOUNTS]),
   ]);
 
-  const match = users.find(
-    (u) => String(u.username).trim().toLowerCase() === String(username).trim().toLowerCase() && String(u.password) === String(password)
-  );
+  // Same name can't appear twice (createUser enforces it), but if a hand-edited
+  // sheet has duplicates, any row whose PIN matches is accepted.
+  const wanted = String(username).trim().toLowerCase();
+  let match;
+  for (const u of users) {
+    if (String(u.username).trim().toLowerCase() !== wanted) continue;
+    if (await verifyPin(password, u.password)) {
+      match = u;
+      break;
+    }
+  }
   if (!match) throw new Error("Invalid username or password");
 
   const rawRole = String(match.role).trim().toLowerCase();
@@ -117,13 +171,13 @@ export async function createUser(loginId, username, password, role, masterPasswo
   const master = users.find(isMasterRow);
   // Checked before the duplicate-name test so a wrong master password can't be
   // used to probe which names already exist.
-  if (String(masterPassword || "") !== String(master.password)) throw new Error("Incorrect master password");
+  if (!(await verifyPin(masterPassword, master.password))) throw new Error("Incorrect master password");
   if (users.some((u) => String(u.username).trim().toLowerCase() === name.toLowerCase())) {
     throw new Error(`"${name}" already exists`);
   }
 
   await appendRows(loginId, TAB_USERS, [
-    { username: name, password: "'" + password, role, account_id: "", display_name: name },
+    { username: name, password: await hashPin(password), role, account_id: "", display_name: name },
   ]);
   return { username: name, role };
 }
