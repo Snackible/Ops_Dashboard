@@ -1,6 +1,7 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import { ThemeToggle } from "../theme/ThemeToggle";
+import { BrandMark } from "./BrandMark";
 import { useAuth } from "../lib/auth/AuthContext";
 
 interface PortalShellProps {
@@ -30,12 +31,7 @@ export function PortalShell({ brandLabel, navItems, children }: PortalShellProps
         <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6 sm:py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
-              <span
-                aria-hidden="true"
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-accent font-display text-[15px] font-bold leading-none text-on-accent shadow-card"
-              >
-                S
-              </span>
+              <BrandMark className="h-8 w-8 drop-shadow-sm" />
               <span className="shrink-0 font-display text-base font-semibold tracking-tight sm:text-lg">Snackible</span>
               <span className="shrink-0 rounded-md bg-accent-soft px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wider text-accent-ink sm:text-[11px]">
                 {brandLabel}
