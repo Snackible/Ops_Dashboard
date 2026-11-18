@@ -13,13 +13,14 @@ import type { DataClient } from "./dataClient";
  */
 const MOCK_MASTER_PASSWORD = "3355";
 
-const mockUsers: { username: string; password: string; role: "ops" | "b2b" | "admin"; accountId?: string }[] = [
+// reset: the Users sheet's "Reset" column - "*" marks an account as wanting a new code, "***" keeps the mark after each use.
+const mockUsers: { username: string; password: string; role: "ops" | "b2b" | "admin"; accountId?: string; reset?: string }[] = [
   { username: "admin", password: MOCK_MASTER_PASSWORD, role: "admin", accountId: "acct-blue-orchard" },
   { username: "Priya", password: "4821", role: "ops" },
   { username: "Karan", password: "7093", role: "ops" },
   { username: "Rahul", password: "1620", role: "b2b", accountId: "acct-blue-orchard" },
   { username: "Ayesha", password: "3357", role: "b2b", accountId: "acct-corner-cafe" },
-  { username: "Meera", password: "9042", role: "b2b", accountId: "acct-blue-orchard" },
+  { username: "Meera", password: "9042", role: "b2b", accountId: "acct-blue-orchard", reset: "*" },
 ];
 
 const STORAGE_KEY = "snackible-ops-mock-db-v4";
@@ -118,6 +119,22 @@ export const mockDataClient: DataClient = {
     if (masterPassword !== MOCK_MASTER_PASSWORD) throw new Error("Incorrect master password");
     if (mockUsers.some((u) => u.username.toLowerCase() === name.toLowerCase())) throw new Error(`"${name}" already exists`);
     mockUsers.push({ username: name, password, role, accountId: role === "b2b" ? "acct-blue-orchard" : undefined });
+    await tick(undefined);
+  },
+
+  async getResetInfo() {
+    const requests = mockUsers.filter((u) => u.reset).map((u) => ({ username: u.username, displayName: u.username }));
+    return tick({ enabled: true, requests });
+  },
+
+  async resetPassword(username, password, masterPassword) {
+    if (!/^\d{4}$/.test(password)) throw new Error("Code must be 4 digits");
+    if (masterPassword !== MOCK_MASTER_PASSWORD) throw new Error("Incorrect master password");
+    const user = mockUsers.find((u) => u.username.toLowerCase() === username.trim().toLowerCase());
+    // The mark is the second factor: the master password alone never reaches an unmarked account.
+    if (!user || !user.reset) throw new Error(`${user ? user.username : "That account"} has not asked for a reset (mark its Reset column with *).`);
+    user.password = password;
+    if (user.reset !== "***") user.reset = undefined;
     await tick(undefined);
   },
 

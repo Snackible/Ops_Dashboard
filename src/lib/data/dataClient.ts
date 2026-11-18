@@ -9,11 +9,21 @@ import type { AuthUser, B2BAccount, FulfillmentLogRow, InventoryItem, ProductReq
  * Script web app, see apps-script/Code.gs) is the real-backend swap-in —
  * nothing outside this file needs to change either way.
  */
+/** What the sign-in screen needs to offer "Reset a password": is it available, and whose accounts are marked for it. */
+export interface ResetInfo {
+  enabled: boolean;
+  requests: { username: string; displayName: string }[];
+}
+
 export interface DataClient {
   /** Looks up a username + 4-digit code against the Users tab (or its mock stand-in) and returns who signed in. */
   login(username: string, password: string): Promise<AuthUser>;
   /** Adds a login to the Users sheet - rejected unless masterPassword matches the admin user's code. */
   createUser(username: string, password: string, role: "ops" | "b2b", masterPassword: string): Promise<void>;
+  /** Whether "Reset a password" is available, and which accounts have been marked for a reset in the Users sheet. */
+  getResetInfo(): Promise<ResetInfo>;
+  /** Sets a new code for a marked account - needs the master password, and the account's Reset mark, never just one of them. */
+  resetPassword(username: string, password: string, masterPassword: string): Promise<void>;
 
   getInventory(): Promise<InventoryItem[]>;
   updateStock(skuId: string, currentStock: number): Promise<InventoryItem>;

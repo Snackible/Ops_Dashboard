@@ -23,6 +23,10 @@ export const COLUMNS = {
   [TAB_FULFILLMENT]: ["date_fulfilled", "request_id", "company_name", "contact_name", "contact_phone", "category", "product_name", "qty", "unit_mrp", "line_total", "approved_by", "notes"],
   [TAB_PRODUCT_REQUESTS]: ["request_id", "account_id", "sku_id", "qty", "note", "status", "created_at", "decided_at", "decided_by", "hold_until", "linked_request_id"],
   /**
+   * The live sheet is shared with other dashboards and read by header text
+   * (see usersTable.js), so these are just the headers a NEW tab starts with.
+   * Reset: mark a row with * to let the master password reset that account's
+   * code (*** keeps the mark after each use). Leave blank normally.
    * username: a name, matched case-insensitively at login.
    * password: a 4-digit code, stored as a salted hash (see pinVault.js). To
    * set or reset one, type the plain digits into the cell - the next run of
@@ -32,7 +36,7 @@ export const COLUMNS = {
    * must match a row in Accounts. display_name: optional, falls back to
    * username when blank.
    */
-  [TAB_USERS]: ["username", "password", "role", "account_id", "display_name"],
+  [TAB_USERS]: ["username", "password", "role", "account_id", "display_name", "Email", "Contact", "Reset"],
   [TAB_LOCK]: ["token", "acquired_at"],
 };
 

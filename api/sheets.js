@@ -1,6 +1,8 @@
 import {
   login,
   createUser,
+  getResetRequests,
+  resetPassword,
   secureLogins,
   getInventory,
   getAccounts,
@@ -19,6 +21,45 @@ import {
   removeTierRowHighlighting,
   withLock,
 } from "../server/actions.js";
+
+// Repeated wrong master passwords from one address are cut off for a while.
+// Best effort only (per warm serverless instance), which still stops a quick
+// guessing run against the master code on the two actions that accept it.
+const MASTER_MAX_FAILS = 6;
+const MASTER_WINDOW_MS = 15 * 60 * 1000;
+const masterFails = new Map();
+
+function clientKey(req, action) {
+  const forwarded = String((req.headers && req.headers["x-forwarded-for"]) || "").split(",")[0].trim();
+  return action + "|" + (forwarded || (req.socket && req.socket.remoteAddress) || "unknown");
+}
+
+function masterLimited(key) {
+  const rec = masterFails.get(key);
+  if (!rec) return false;
+  if (Date.now() - rec.first > MASTER_WINDOW_MS) {
+    masterFails.delete(key);
+    return false;
+  }
+  return rec.count >= MASTER_MAX_FAILS;
+}
+
+/** Runs a master-password-gated action with the rate limit around it. */
+async function withMasterLimit(req, action, run) {
+  const key = clientKey(req, action);
+  if (masterLimited(key)) throw new Error("Too many attempts. Try again in a few minutes.");
+  try {
+    const result = await run();
+    masterFails.delete(key);
+    return result;
+  } catch (err) {
+    if (err && err.message === "Incorrect master password") {
+      const rec = masterFails.get(key);
+      masterFails.set(key, rec ? { ...rec, count: rec.count + 1 } : { first: Date.now(), count: 1 });
+    }
+    throw err;
+  }
+}
 
 /**
  * Same one-endpoint, action-in-body dispatch shape as the old Apps Script
@@ -60,7 +101,9 @@ export default async function handler(req, res) {
       // reads
       case "login": data = await login(loginId, opsId, body.username, body.password); break;
       case "secureLogins": data = await secureLogins(loginId); break;
-      case "createUser": data = await withLock(opsId, () => createUser(loginId, body.username, body.password, body.role, body.masterPassword)); break;
+      case "createUser": data = await withMasterLimit(req, "createUser", () => withLock(opsId, () => createUser(loginId, body.username, body.password, body.role, body.masterPassword))); break;
+      case "getResetRequests": data = await getResetRequests(loginId); break;
+      case "resetPassword": data = await withMasterLimit(req, "resetPassword", () => withLock(opsId, () => resetPassword(loginId, body.username, body.password, body.masterPassword))); break;
       case "getInventory": data = await getInventory(ratecardId); break;
       case "getAccounts": data = await getAccounts(opsId); break;
       case "getRequests": data = await getRequests(opsId, null); break;

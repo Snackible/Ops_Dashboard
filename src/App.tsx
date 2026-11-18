@@ -5,6 +5,7 @@ import { PortalShell } from "./components/PortalShell";
 import { ToastHost } from "./components/ToastHost";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { CatalogPage } from "./pages/b2b/CatalogPage";
 import { CommittedOrdersPage } from "./pages/b2b/CommittedOrdersPage";
 import { MyRequestsPage } from "./pages/b2b/MyRequestsPage";
@@ -43,6 +44,7 @@ export function App() {
         <Route path="/" element={<HomeRedirect />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         <Route
           path="/b2b"

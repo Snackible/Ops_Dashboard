@@ -1,6 +1,6 @@
 import { callSheets } from "./sheetsClient";
 import type { AuthUser, B2BAccount, FulfillmentLogRow, InventoryItem, ProductRequest, StockRequest } from "../types";
-import type { DataClient } from "./dataClient";
+import type { DataClient, ResetInfo } from "./dataClient";
 
 /**
  * Google Sheets backend behind the same DataClient interface the mock
@@ -19,6 +19,14 @@ export const sheetsDataClient: DataClient = {
 
   async createUser(username, password, role, masterPassword) {
     await callSheets<unknown>("createUser", { username, password, role, masterPassword });
+  },
+
+  getResetInfo() {
+    return callSheets<ResetInfo>("getResetRequests");
+  },
+
+  async resetPassword(username, password, masterPassword) {
+    await callSheets<unknown>("resetPassword", { username, password, masterPassword });
   },
 
   getInventory() {

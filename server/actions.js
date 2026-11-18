@@ -1,6 +1,8 @@
 import { readRatecardRows, resolveRatecardColumn } from "./lib/ratecard.js";
 import {
   writeRange,
+  readTabs,
+  appendRows as appendRowsRaw,
   batchWriteRanges,
   batchUpdateSpreadsheet,
   getConditionalFormatRuleCounts,
@@ -24,7 +26,8 @@ import {
   MANAGED_TITLES,
 } from "./lib/managedSheets.js";
 import { withLock } from "./lib/lock.js";
-import { hashPin, verifyPin, secureStoredPins } from "./lib/pinVault.js";
+import { hashPin, verifyPin, isEncrypted, secureStoredPins } from "./lib/pinVault.js";
+import { parseUsers, buildUserRow, resetRequests, planReset, isMasterAdminRole } from "./lib/usersTable.js";
 
 function toInventoryItem(r) {
   return {
@@ -39,48 +42,63 @@ function toInventoryItem(r) {
 // Users lives on its own dedicated spreadsheet (loginId) - kept separate
 // from Accounts/Orders/etc. (which live on the ratecard spreadsheet, see
 // api/sheets.js) so login credentials never share a sheet with anything else.
+// That sheet is shared with other dashboards, so its columns are found by
+// header text (see lib/usersTable.js), never by position.
 const MASTER_USERNAME = "admin";
 const DEFAULT_MASTER_PASSWORD = "3355";
 
-const isMasterRow = (u) => String(u.username).trim().toLowerCase() === MASTER_USERNAME;
+// The master password is the code of the "admin" row, or of any row whose role
+// is "master-admin" (what the other dashboards on this sheet use).
+const isMasterRow = (u) => String(u.username).trim().toLowerCase() === MASTER_USERNAME || isMasterAdminRole(u.role);
 
-/**
- * The master password is simply the "admin" row's code in the Users sheet, so
- * it's visible and editable right there. Seeded with a default the first time
- * something needs it. The leading apostrophe stores the code as text -
- * otherwise Sheets would turn "0420" into the number 420 and the leading zero
- * would be gone by the time login compares it.
- */
-async function readUsers(loginId, { seedAdmin }) {
-  let { [TAB_USERS]: users } = await readManagedTabs(loginId, [TAB_USERS]);
-  if (seedAdmin && !users.some(isMasterRow)) {
-    // Stored hashed from the start - see pinVault.js. The default is only ever
-    // visible in this source file, never in the sheet.
-    await appendRows(loginId, TAB_USERS, [
-      { username: MASTER_USERNAME, password: await hashPin(DEFAULT_MASTER_PASSWORD), role: "admin", account_id: "", display_name: "Admin" },
-    ]);
-    ({ [TAB_USERS]: users } = await readManagedTabs(loginId, [TAB_USERS]));
+/** Does `typed` match the code of any master row that has one? */
+async function masterMatches(typed, users) {
+  for (const m of users.filter((u) => isMasterRow(u) && u.password !== "")) {
+    if (await verifyPin(typed, m.password)) return true;
   }
-  await upgradePlainPins(loginId, users);
-  return users;
+  return false;
 }
 
-const PASSWORD_COL_A1 = "B"; // column of "password" in COLUMNS[TAB_USERS]
+/**
+ * Reads the Users tab fresh (never cached) as { users, cols }. With seedAdmin,
+ * makes sure a master row exists first: the default code is stored hashed, so
+ * it's only ever visible in this source file, never in the sheet. Any
+ * plain-text code found is hashed on the way through (see upgradePlainPins).
+ */
+async function readUsersTable(loginId, { seedAdmin }) {
+  await ensureTabs(loginId, [TAB_USERS]);
+  const read = async () => parseUsers((await readTabs(loginId, [TAB_USERS]))[TAB_USERS] || []);
+  let table = await read();
+  if (seedAdmin && !table.users.some(isMasterRow)) {
+    await appendRowsRaw(loginId, TAB_USERS, [
+      buildUserRow(table.cols, {
+        username: MASTER_USERNAME,
+        password: await hashPin(DEFAULT_MASTER_PASSWORD),
+        role: "admin",
+        account_id: "",
+        display_name: "Admin",
+      }),
+    ]);
+    table = await read();
+  }
+  await upgradePlainPins(loginId, table, read);
+  return table;
+}
 
 /**
  * Replaces any plain-text PIN in the Users sheet with a hash (see pinVault.js).
- * Runs on every login/signup read - a no-op unless a plain-text PIN exists, so
+ * Runs on every Users read - a no-op unless a plain-text PIN exists, so
  * typing a fresh PIN straight into the sheet gets secured the next time
  * anyone uses a dashboard. A failure here is logged, never allowed to block
  * login: the plain-text PIN still verifies, and the next run retries.
  */
-async function upgradePlainPins(loginId, users) {
+async function upgradePlainPins(loginId, { users, cols }, read) {
   try {
     return await secureStoredPins({
       rows: users,
-      readRows: async () => (await readManagedTabs(loginId, [TAB_USERS]))[TAB_USERS],
+      readRows: async () => (await read()).users,
       writeCells: (updates) =>
-        batchWriteRanges(loginId, updates.map((u) => ({ title: TAB_USERS, a1: PASSWORD_COL_A1 + u.row, value: u.value }))),
+        batchWriteRanges(loginId, updates.map((u) => ({ title: TAB_USERS, a1: colLetter(cols.password + 1) + u.row, value: u.value }))),
     });
   } catch (err) {
     console.error("Couldn't encrypt plain-text PINs in the Users sheet:", err);
@@ -101,17 +119,17 @@ const secureCheckedAt = new Map();
 export async function secureLogins(loginId) {
   const last = secureCheckedAt.get(loginId) || 0;
   if (Date.now() - last < SECURE_CHECK_TTL_MS) return { encrypted: 0, skipped: true };
-  const { [TAB_USERS]: users } = await readManagedTabs(loginId, [TAB_USERS]);
-  const encrypted = await upgradePlainPins(loginId, users);
+  // readUsersTable hashes any plain-text code on the way through.
+  const { users } = await readUsersTable(loginId, { seedAdmin: false });
   secureCheckedAt.set(loginId, Date.now());
-  return { encrypted, skipped: false };
+  return { encrypted: users.filter((u) => isEncrypted(u.password)).length, skipped: false };
 }
 
 export async function login(loginId, ratecardId, username, password) {
   if (!username || !password) throw new Error("Username and password are required");
   const wantsAdmin = String(username).trim().toLowerCase() === MASTER_USERNAME;
-  const [users, { [TAB_ACCOUNTS]: accounts }] = await Promise.all([
-    readUsers(loginId, { seedAdmin: wantsAdmin }),
+  const [{ users, cols }, { [TAB_ACCOUNTS]: accounts }] = await Promise.all([
+    readUsersTable(loginId, { seedAdmin: wantsAdmin }),
     readManagedTabs(ratecardId, [TAB_ACCOUNTS]),
   ]);
 
@@ -128,7 +146,8 @@ export async function login(loginId, ratecardId, username, password) {
   }
   if (!match) throw new Error("Invalid username or password");
 
-  const rawRole = String(match.role).trim().toLowerCase();
+  // A "master-admin" row signs in as a full admin.
+  const rawRole = isMasterAdminRole(match.role) ? "admin" : String(match.role).trim().toLowerCase();
   const role = rawRole === "ops" || rawRole === "admin" ? rawRole : "b2b";
   let accountId;
   // Admin gets an account too, so the B2B dashboard works for them (placing
@@ -148,7 +167,7 @@ export async function login(loginId, ratecardId, username, password) {
       await appendRows(ratecardId, TAB_ACCOUNTS, [
         { account_id: accountId, company_name: companyName, contact_name: "", contact_email: "", contact_phone: "" },
       ]);
-      await writeCell(loginId, TAB_USERS, match.__row, "account_id", accountId);
+      await batchWriteRanges(loginId, [{ title: TAB_USERS, a1: colLetter(cols.account_id + 1) + match.__row, value: accountId }]);
     }
   }
 
@@ -167,19 +186,49 @@ export async function createUser(loginId, username, password, role, masterPasswo
   if (!/^\d{4}$/.test(String(password || ""))) throw new Error("Code must be 4 digits");
   if (role !== "ops" && role !== "b2b") throw new Error("Pick Ops or B2B");
 
-  const users = await readUsers(loginId, { seedAdmin: true });
-  const master = users.find(isMasterRow);
+  const { users, cols } = await readUsersTable(loginId, { seedAdmin: true });
   // Checked before the duplicate-name test so a wrong master password can't be
   // used to probe which names already exist.
-  if (!(await verifyPin(masterPassword, master.password))) throw new Error("Incorrect master password");
+  if (!(await masterMatches(masterPassword, users))) throw new Error("Incorrect master password");
   if (users.some((u) => String(u.username).trim().toLowerCase() === name.toLowerCase())) {
     throw new Error(`"${name}" already exists`);
   }
 
-  await appendRows(loginId, TAB_USERS, [
-    { username: name, password: await hashPin(password), role, account_id: "", display_name: name },
+  await appendRowsRaw(loginId, TAB_USERS, [
+    buildUserRow(cols, { username: name, password: await hashPin(password), role, account_id: "", display_name: name }),
   ]);
   return { username: name, role };
+}
+
+/**
+ * For the sign-in screen: is "Reset a password" available (a master row with a
+ * code exists), and which accounts have someone marked in the Reset column.
+ * Names only - never a code, hash or mark.
+ */
+export async function getResetRequests(loginId) {
+  const { users, cols } = await readUsersTable(loginId, { seedAdmin: true });
+  const enabled = users.some((u) => isMasterRow(u) && u.password !== "");
+  return { enabled, requests: cols.reset == null ? [] : resetRequests(users) };
+}
+
+/**
+ * Sets a new code for an account that has been marked in the Reset column.
+ * Needs the master password AND the mark - the master password alone never
+ * reaches an account nobody asked to reset. The sheet is read fresh here (not
+ * a cache) so a mark cleared a moment ago can't be replayed. The mark is
+ * cleared after use, except a mark of exactly "***" (see usersTable.js).
+ */
+export async function resetPassword(loginId, username, newPassword, masterPassword) {
+  if (!/^\d{4}$/.test(String(newPassword || ""))) throw new Error("Code must be 4 digits");
+  const { users, cols } = await readUsersTable(loginId, { seedAdmin: true });
+  // Master check first so a wrong master password learns nothing about who is marked.
+  if (!(await masterMatches(masterPassword, users))) throw new Error("Incorrect master password");
+  const cells = planReset({ users, cols, username, passwordHash: await hashPin(newPassword) });
+  await batchWriteRanges(
+    loginId,
+    cells.map((c) => ({ title: TAB_USERS, a1: colLetter(c.col + 1) + c.row, value: c.value }))
+  );
+  return { username: String(username).trim() };
 }
 
 export async function getInventory(ratecardId) {

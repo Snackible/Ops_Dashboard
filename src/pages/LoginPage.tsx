@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth/AuthContext";
 import { dataClient } from "../lib/data";
@@ -9,8 +9,22 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resetAvailable, setResetAvailable] = useState(false);
   const { signIn } = useAuth();
   const navigate = useNavigate();
+
+  // "Reset a password" shows whenever a master password exists, not only while
+  // someone is marked - the page itself explains what to do when nobody is.
+  useEffect(() => {
+    let live = true;
+    dataClient
+      .getResetInfo()
+      .then((info) => live && setResetAvailable(info.enabled))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -80,6 +94,16 @@ export function LoginPage() {
           <Link to="/signup" className="font-medium text-accent-ink hover:underline">
             Create a user
           </Link>
+          {resetAvailable && (
+            <>
+              <span aria-hidden="true" className="mx-2 text-ink-faint">
+                ·
+              </span>
+              <Link to="/reset-password" className="font-medium text-accent-ink hover:underline">
+                Reset a password
+              </Link>
+            </>
+          )}
         </p>
       </div>
     </div>

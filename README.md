@@ -268,3 +268,21 @@ ones still comparing plain text will stop accepting logins.
 Optional but recommended: set the same `PIN_PEPPER` env var on every dashboard.
 A 4-digit PIN only has 10,000 possibilities, so without a secret kept outside
 the sheet the hashes could be brute-forced by anyone who can read it.
+
+## Registering and resetting codes (shared logins sheet)
+
+Both screens are on the sign-in page and are gated by the master password (the
+`admin` row's code, or any row with role `master-admin`).
+
+- **Create a user** adds a row; the code is stored hashed.
+- **Reset a password** needs the master password **and** the account having a
+  mark in the sheet's `Reset` column (`*` by convention). The master password
+  alone never reaches an account nobody marked. After a reset the mark is
+  cleared, except a mark of exactly `***`, which stays for accounts that are
+  reset over and over on purpose. Codes here are 4 digits.
+
+The Users sheet's columns are found by their header text, in any order
+(`server/lib/usersTable.js`), because other dashboards add and reorder
+columns. The sheet needs a `Reset` header in row 1; the dashboard never edits
+the header row of a live sheet. The shared rules are written up in
+`B2B_Delivery_Tracker/ACCOUNTS_ADMIN_SETUP.md`.
