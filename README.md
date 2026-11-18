@@ -279,7 +279,8 @@ Both screens are on the sign-in page and are gated by the master password (the
   mark in the sheet's `Reset` column (`*` by convention). The master password
   alone never reaches an account nobody marked. After a reset the mark is
   cleared, except a mark of exactly `***`, which stays for accounts that are
-  reset over and over on purpose. Codes here are 4 digits.
+  reset over and over on purpose. A new password is 6 to 100 characters, the
+  same as the other dashboards. Older 4-digit codes still sign in until changed.
 
 The Users sheet's columns are found by their header text, in any order
 (`server/lib/usersTable.js`), because other dashboards add and reorder

@@ -16,7 +16,7 @@ export interface ResetInfo {
 }
 
 export interface DataClient {
-  /** Looks up a username + 4-digit code against the Users tab (or its mock stand-in) and returns who signed in. */
+  /** Looks up a username + password against the Users tab (or its mock stand-in) and returns who signed in. */
   login(username: string, password: string): Promise<AuthUser>;
   /** Adds a login to the Users sheet - rejected unless masterPassword matches the admin user's code. */
   createUser(username: string, password: string, role: "ops" | "b2b", masterPassword: string): Promise<void>;

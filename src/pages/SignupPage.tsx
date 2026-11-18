@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth/AuthContext";
 import { dataClient } from "../lib/data";
 import { ThemeToggle } from "../theme/ThemeToggle";
+import { PASSWORD_MAX, PASSWORD_MIN, passwordProblem } from "../lib/passwordRules";
 
 type NewRole = "ops" | "b2b";
 
@@ -59,15 +60,15 @@ export function SignupPage() {
           </label>
 
           <label className="block">
-            <span className="text-sm text-ink-soft">4-digit code</span>
+            <span className="text-sm text-ink-soft">Password</span>
             <input
               value={password}
-              onChange={(e) => setPassword(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              onChange={(e) => setPassword(e.target.value)}
               type="password"
-              inputMode="numeric"
-              maxLength={4}
-              placeholder="••••"
-              className={`${inputClass} tracking-[0.3em] placeholder:tracking-normal`}
+              autoComplete="new-password"
+              maxLength={PASSWORD_MAX}
+              placeholder={`At least ${PASSWORD_MIN} characters`}
+              className={inputClass}
             />
           </label>
 
@@ -105,7 +106,7 @@ export function SignupPage() {
 
           <button
             type="submit"
-            disabled={busy || username.trim() === "" || password.length !== 4 || masterPassword === ""}
+            disabled={busy || username.trim() === "" || passwordProblem(password) !== null || masterPassword === ""}
             className="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
           >
             {busy ? "Creating…" : "Create user"}

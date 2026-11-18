@@ -69,6 +69,17 @@ export function buildUserRow(cols, user) {
   return row;
 }
 
+export const PASSWORD_MIN = 6;
+export const PASSWORD_MAX = 100;
+
+/** The rule every dashboard on this sheet uses for a NEW password. Existing, shorter ones (old 4-digit codes) still sign in. */
+export function passwordProblem(password) {
+  const p = String(password ?? "");
+  if (p.length < PASSWORD_MIN) return `Password must be at least ${PASSWORD_MIN} characters.`;
+  if (p.length > PASSWORD_MAX) return `Password must be at most ${PASSWORD_MAX} characters.`;
+  return null;
+}
+
 /** "master-admin" signs in as a full admin everywhere; the raw role is only used to find the master password. */
 export const isMasterAdminRole = (role) => /^master[\s_-]?admin$/i.test(String(role ?? "").trim());
 

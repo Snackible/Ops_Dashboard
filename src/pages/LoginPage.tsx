@@ -65,16 +65,14 @@ export function LoginPage() {
           </label>
 
           <label className="block">
-            <span className="text-sm text-ink-soft">4-digit code</span>
+            <span className="text-sm text-ink-soft">Password</span>
             <input
               value={password}
-              onChange={(e) => setPassword(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              onChange={(e) => setPassword(e.target.value)}
               type="password"
-              inputMode="numeric"
-              pattern="\d{4}"
-              maxLength={4}
-              placeholder="••••"
-              className="mt-1 w-full rounded-md border border-line bg-paper px-3 py-2 text-sm tracking-[0.3em] text-ink placeholder:tracking-normal placeholder:text-ink-faint transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+              autoComplete="current-password"
+              placeholder="Your password"
+              className="mt-1 w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-faint transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </label>
 
@@ -82,7 +80,7 @@ export function LoginPage() {
 
           <button
             type="submit"
-            disabled={busy || username.trim() === "" || password.length !== 4}
+            disabled={busy || username.trim() === "" || password === ""}
             className="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
           >
             {busy ? "Signing in…" : "Sign in"}

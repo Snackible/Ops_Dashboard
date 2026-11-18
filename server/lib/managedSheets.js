@@ -28,8 +28,8 @@ export const COLUMNS = {
    * Reset: mark a row with * to let the master password reset that account's
    * code (*** keeps the mark after each use). Leave blank normally.
    * username: a name, matched case-insensitively at login.
-   * password: a 4-digit code, stored as a salted hash (see pinVault.js). To
-   * set or reset one, type the plain digits into the cell - the next run of
+   * password: stored as a salted hash (see pinVault.js). To
+   * set or reset one, type the plain text into the cell - the next run of
    * any dashboard replaces them with a hash. Plain-text rows below are only
    * the seed and are hashed the same way on first use.
    * role: "ops" or "b2b". account_id: required for "b2b", ignored for "ops" -

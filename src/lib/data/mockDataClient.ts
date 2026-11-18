@@ -3,10 +3,11 @@ import { eventBus } from "../events";
 import { readMockFulfillmentSheet } from "../integrations/mockFulfillmentSheet";
 import type { AuthUser, B2BAccount, InventoryItem, ProductRequest, ProductRequestStatus, StockRequest, Tier } from "../types";
 import type { DataClient } from "./dataClient";
+import { passwordProblem } from "../passwordRules";
 
 /**
  * Local stand-in for the "Users" sheet tab (see managedSheets.js on the real
- * backend) - same shape, same idea: username + 4-digit code -> role (+
+ * backend) - same shape, same idea: username + password -> role (+
  * account for b2b). Add a row here to add a mock login; it never persists to
  * localStorage since credentials aren't something local testing should reset
  * independently of a code change.
@@ -115,7 +116,8 @@ export const mockDataClient: DataClient = {
   async createUser(username, password, role, masterPassword) {
     const name = username.trim();
     if (!name) throw new Error("Name is required");
-    if (!/^\d{4}$/.test(password)) throw new Error("Code must be 4 digits");
+    const weak = passwordProblem(password);
+    if (weak) throw new Error(weak);
     if (masterPassword !== MOCK_MASTER_PASSWORD) throw new Error("Incorrect master password");
     if (mockUsers.some((u) => u.username.toLowerCase() === name.toLowerCase())) throw new Error(`"${name}" already exists`);
     mockUsers.push({ username: name, password, role, accountId: role === "b2b" ? "acct-blue-orchard" : undefined });
@@ -128,7 +130,8 @@ export const mockDataClient: DataClient = {
   },
 
   async resetPassword(username, password, masterPassword) {
-    if (!/^\d{4}$/.test(password)) throw new Error("Code must be 4 digits");
+    const weak = passwordProblem(password);
+    if (weak) throw new Error(weak);
     if (masterPassword !== MOCK_MASTER_PASSWORD) throw new Error("Incorrect master password");
     const user = mockUsers.find((u) => u.username.toLowerCase() === username.trim().toLowerCase());
     // The mark is the second factor: the master password alone never reaches an unmarked account.

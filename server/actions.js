@@ -27,7 +27,7 @@ import {
 } from "./lib/managedSheets.js";
 import { withLock } from "./lib/lock.js";
 import { hashPin, verifyPin, isEncrypted, secureStoredPins } from "./lib/pinVault.js";
-import { parseUsers, buildUserRow, resetRequests, planReset, isMasterAdminRole } from "./lib/usersTable.js";
+import { parseUsers, buildUserRow, resetRequests, planReset, isMasterAdminRole, passwordProblem } from "./lib/usersTable.js";
 
 function toInventoryItem(r) {
   return {
@@ -183,7 +183,8 @@ export async function login(loginId, ratecardId, username, password) {
 export async function createUser(loginId, username, password, role, masterPassword) {
   const name = String(username || "").trim();
   if (!name) throw new Error("Name is required");
-  if (!/^\d{4}$/.test(String(password || ""))) throw new Error("Code must be 4 digits");
+  const weak = passwordProblem(password);
+  if (weak) throw new Error(weak);
   if (role !== "ops" && role !== "b2b") throw new Error("Pick Ops or B2B");
 
   const { users, cols } = await readUsersTable(loginId, { seedAdmin: true });
@@ -219,7 +220,8 @@ export async function getResetRequests(loginId) {
  * cleared after use, except a mark of exactly "***" (see usersTable.js).
  */
 export async function resetPassword(loginId, username, newPassword, masterPassword) {
-  if (!/^\d{4}$/.test(String(newPassword || ""))) throw new Error("Code must be 4 digits");
+  const weak = passwordProblem(newPassword);
+  if (weak) throw new Error(weak);
   const { users, cols } = await readUsersTable(loginId, { seedAdmin: true });
   // Master check first so a wrong master password learns nothing about who is marked.
   if (!(await masterMatches(masterPassword, users))) throw new Error("Incorrect master password");

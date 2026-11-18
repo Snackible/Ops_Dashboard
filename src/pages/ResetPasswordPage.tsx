@@ -4,6 +4,7 @@ import { dataClient } from "../lib/data";
 import type { ResetInfo } from "../lib/data/dataClient";
 import { Select } from "../components/Select";
 import { ThemeToggle } from "../theme/ThemeToggle";
+import { PASSWORD_MAX, PASSWORD_MIN, passwordProblem } from "../lib/passwordRules";
 
 /**
  * Lets someone who forgot their code set a new one. Two things are needed, and
@@ -66,7 +67,7 @@ export function ResetPasswordPage() {
     body = (
       <div className="surface space-y-3 rounded-2xl p-6">
         <p className="text-sm">
-          New code saved for <span className="font-medium">{doneFor}</span>. They can sign in with it now.
+          New password saved for <span className="font-medium">{doneFor}</span>. They can sign in with it now.
         </p>
       </div>
     );
@@ -108,16 +109,15 @@ export function ResetPasswordPage() {
         </label>
 
         <label className="block">
-          <span className="text-sm text-ink-soft">New 4-digit code</span>
+          <span className="text-sm text-ink-soft">New password</span>
           <input
             value={password}
-            onChange={(e) => setPassword(e.target.value.replace(/\D/g, "").slice(0, 4))}
+            onChange={(e) => setPassword(e.target.value)}
             type="password"
-            inputMode="numeric"
-            maxLength={4}
-            placeholder="••••"
+            maxLength={PASSWORD_MAX}
+            placeholder={`At least ${PASSWORD_MIN} characters`}
             autoComplete="new-password"
-            className={`${inputClass} tracking-[0.3em] placeholder:tracking-normal`}
+            className={inputClass}
           />
         </label>
 
@@ -128,7 +128,7 @@ export function ResetPasswordPage() {
             onChange={(e) => setMasterPassword(e.target.value)}
             type="password"
             autoComplete="off"
-            placeholder="Required to reset a code"
+            placeholder="Required to reset a password"
             className={inputClass}
           />
         </label>
@@ -137,10 +137,10 @@ export function ResetPasswordPage() {
 
         <button
           type="submit"
-          disabled={busy || username === "" || password.length !== 4 || masterPassword === ""}
+          disabled={busy || username === "" || passwordProblem(password) !== null || masterPassword === ""}
           className="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60"
         >
-          {busy ? "Saving…" : "Save new code"}
+          {busy ? "Saving…" : "Save new password"}
         </button>
       </form>
     );
